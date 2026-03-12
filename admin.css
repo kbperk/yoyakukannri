@@ -1,0 +1,792 @@
+@charset "UTF-8";
+
+/* =========================================
+   変数定義 (styles.html.txt より完全移植)
+   ========================================= */
+:root {
+  --brand: #E60012; 
+  --ink: #111315; 
+  --muted: #62676C; 
+  --line: #E8E8E8; 
+  --bg: #FFFFFF; 
+  --warn: #8B0000;
+  
+  /* 追加: フォーカスリング用 */
+  --focus: #30D5C8;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  
+  /* ★重要: 元ファイルの指定通り、文字サイズをかなり大きく設定 */
+  /* スマホでの視認性を最優先した設定です */
+  font-size: clamp(27px, 4.2vw + 0.3rem, 33px);
+  
+  color: var(--ink); 
+  background: var(--bg);
+  
+  /* iPhoneのセーフエリア対応 */
+  padding-top: env(safe-area-inset-top, 0); 
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* =========================================
+   レイアウトコンポーネント
+   ========================================= */
+
+/* 画面端まで広げる（左右余白なし） */
+.container {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* 固定ヘッダー */
+.hd {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hd h1 {
+  margin: 0;
+  font-size: 1.2em; /* body基準で約32px〜 */
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* カード（セクション） */
+.card {
+  border-bottom: 8px solid #F2F4F6; /* 区切り線 */
+  padding-bottom: 8px;
+  background: #fff;
+}
+
+.card:last-of-type {
+  border-bottom: none;
+  padding-bottom: 60px; /* 最下部の余白 */
+}
+
+.card-hd {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-hd h2 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+.card-bd {
+  padding: 0 16px 16px;
+}
+
+/* ツールボタン群エリア */
+.tools {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* =========================================
+   ボタン & インタラクション
+   ========================================= */
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+/* タップ時の沈み込みアニメーション */
+.press {
+  transition: transform 0.1s;
+}
+.press:active {
+  transform: scale(0.96);
+}
+
+/* メインボタン (赤) */
+.btn {
+  appearance: none;
+  background: var(--brand);
+  color: #fff;
+  width: 100%;
+  padding: 16px; /* タップしやすい大きさ */
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.1em;
+  line-height: 1.4;
+  text-align: center;
+  display: inline-block;
+}
+
+/* 警告ボタン (白地に赤枠) */
+.btn-warn {
+  appearance: none;
+  border: 2px solid var(--warn);
+  background: #fff;
+  color: var(--warn);
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1em;
+}
+
+/* アウトラインボタン (丸みあり) */
+.btn-outline {
+  appearance: none;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 20px;
+  border-radius: 99px;
+  font-weight: 700;
+  font-size: 0.9em;
+}
+
+/* アイコンボタン (?) */
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.2em;
+}
+
+/* 小ボタン (一括操作など) */
+.btn-sm {
+  border: none;
+  background: var(--ink);
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9em;
+}
+
+.btn-sm-outline {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9em;
+}
+
+.btn-sm-cal {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9em;
+}
+
+/* =========================================
+   日付操作エリア
+   ========================================= */
+.date-ctrl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #F8F9FA;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.btn-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 1.4em;
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.date-disp {
+  text-align: center;
+  position: relative;
+  width: 100%;
+}
+
+/* input[type="date"] を透明にして全体を覆う (スマホのネイティブピッカー起動用) */
+#admDate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.label-main {
+  font-size: 1.5em;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.label-sub {
+  font-size: 0.9em;
+  color: var(--muted);
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+/* =========================================
+   グリッド・スロット (予約枠)
+   ========================================= */
+.grid-toggles {
+  display: grid;
+  /* 列幅を確保しつつ折り返し */
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.slot-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 8px;
+  background: #fff;
+  transition: all 0.1s;
+  min-height: 120px;
+  position: relative;
+  user-select: none;
+}
+
+/* ON状態 */
+.slot-toggle.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+/* OFF状態 */
+.slot-toggle.is-inactive {
+  opacity: 0.5;
+  background: #f0f0f0;
+}
+
+/* 枠内の定員入力フォーム */
+.slot-cap-input {
+  width: 60px;
+  text-align: center;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  margin: 8px 0;
+  padding: 4px;
+  font-size: 20px;
+  font-weight: bold;
+  background: #fff;
+  color: #000;
+}
+
+/* =========================================
+   リスト・行スタイル (予約一覧)
+   ========================================= */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  position: relative;
+}
+
+/* 行の状態スタイル */
+.row.is-checkedin {
+  background: linear-gradient(0deg, rgba(6,170,85,.06), rgba(6,170,85,.06));
+  border-color: #32D74B;
+}
+
+.row.is-noshow {
+  opacity: 0.65;
+  background: #fafafa;
+}
+.row.is-noshow::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 1px;
+  background: rgba(0,0,0,0.2);
+}
+
+/* 行ヘッダー (時間・人数) */
+.row-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.row-time {
+  font-size: 1.2em;
+  font-weight: 800;
+}
+
+.row-count {
+  font-size: 1.4em;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+/* 行メタ情報 (名前・電話・金額) */
+.row-meta {
+  font-size: 0.95em;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* 行内アクションボタンエリア */
+.row-acts {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.row-acts button {
+  font-size: 0.9em;
+  padding: 10px 16px;
+}
+
+/* バッジエリア (残数表示) */
+.badges-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 0 16px;
+}
+
+.badge {
+  font-size: 0.85em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #eee;
+  color: #555;
+  font-weight: bold;
+}
+.badge.warn { background: #fff3cd; color: #856404; }
+.badge.full { background: #f8d7da; color: #721c24; }
+
+/* =========================================
+   スイッチ・フォーム・その他
+   ========================================= */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+  vertical-align: middle;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--brand);
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+/* 設定グリッド */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.9em;
+  font-weight: bold;
+  color: var(--muted);
+}
+
+.grid input {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 1.1em;
+}
+
+.note {
+  font-size: 0.85em;
+  color: var(--warn);
+  margin-top: 10px;
+}
+
+/* =========================================
+   モーダル (カレンダー・ヘルプ)
+   ========================================= */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal-card {
+  background: #fff;
+  width: 100%;
+  max-width: 600px;
+  border-radius: 20px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.modal-hd {
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.help-title {
+  font-size: 1.2em;
+  font-weight: 800;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 2em;
+  color: #999;
+  line-height: 1;
+}
+
+.help-body, .modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  font-size: 0.95em;
+  line-height: 1.8;
+}
+
+.modal-ft {
+  padding: 20px;
+  border-top: 1px solid var(--line);
+  text-align: right;
+}
+
+/* =========================================
+   ローディング & 通知バナー
+   ========================================= */
+.loading-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(255,255,255,0.8);
+  z-index: 11000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #eee;
+  border-top: 5px solid var(--brand);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.banner {
+  background: var(--brand);
+  color: #fff;
+  padding: 12px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1em;
+}
+
+/* スケルトンローディング */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #f8f8f8 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 12px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ===== UIトレース強化（画像準拠） ===== */
+
+.top-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:14px;
+  margin: 6px 0 10px;
+  flex-wrap:nowrap;
+}
+
+.btn-pill{
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-weight: 900;
+  font-size: clamp(20px, 5.2vw, 26px);
+  line-height: 1;
+  border: 2px solid transparent;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.15);
+  white-space: nowrap;
+}
+
+.btn-blue{
+  background:#1f66d1;
+  color:#fff;
+  border-color:#0a2a5e;
+}
+.btn-red{
+  background:#e00000;
+  color:#fff;
+  border-color:#b00000;
+}
+.btn-outline-red{
+  background:#fff;
+  color:#a00000;
+  border-color:#a00000;
+  box-shadow:none;
+}
+
+.slots-title{
+  background:#2b66d9;
+  color:#fff;
+  display:inline-block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 900;
+  margin: 0 0 10px;
+}
+
+/* 定員一括の入力（2桁想定で大きく） */
+.bulk-cap-input{
+  width: 120px;
+  height: 74px;
+  font-size: 40px;
+  font-weight: 900;
+  text-align:center;
+  border-radius: 12px;
+  border: 2px solid #bdbdbd;
+  background:#fff;
+}
+
+/* 時間/予約数/定員のセルの見た目を画像に寄せる */
+#admToggles .toggle{
+  border-radius: 12px;
+  border: 1px solid #e2e2e2;
+  background:#fff;
+  font-weight: 900;
+  font-size: clamp(26px, 7vw, 34px);
+  padding: 18px 12px;
+}
+
+#admToggles button.toggle{
+  width: 100%;
+}
+
+#admToggles button.toggle.on{
+  background:#000;
+  color:#fff;
+  border-color:#000;
+}
+
+#admToggles input.toggle{
+  width: 100%;
+  padding: 16px 10px;
+  font-size: clamp(28px, 7vw, 34px);
+}
+
+@media (max-width: 480px){
+  .btn-pill{ padding: 12px 18px; }
+  .bulk-cap-input{ height: 68px; font-size: 38px; width: 110px; }
+}
+
+/* ===== 追加: オーバーレイ（読み込み/書き込み） ===== */
+.overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.overlay-card{
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 16px;
+  padding: 18px 22px;
+  min-width: 220px;
+  text-align: center;
+}
+.overlay-text{
+  color: #fff;
+  font-weight: 900;
+  font-size: clamp(22px, 6vw, 30px);
+  letter-spacing: 0.06em;
+}
+
+/* 時間 / 予約数 / 定員 の背景色を無効化（白に戻す） */
+.slots-title{
+  background: transparent !important;
+  color: #000 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  display: block !important;
+  margin: 0 0 10px !important;
+}
+
+/* ===== 追加: ネイティブ日付ピッカー（モーダル廃止） ===== */
+
+/* index.htmlの隠しinput[type=date]（ボタンでshowPickerするためDOM上に置くが、見た目は出さない） */
+.date-native{
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+
+
+/* ===== 日付バー（確実にタップでネイティブカレンダー） ===== */
+.date-bar-wrap{
+  position: relative;
+  width: 100%;
+}
+
+.date-bar-text{
+  width: 100%;
+  height: 64px;
+  padding: 12px 14px;
+  border: 2px solid #e2e2e2;
+  border-radius: 14px;
+  background: #fff;
+  font-size: clamp(28px, 7vw, 36px);
+  font-weight: 900;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  box-sizing: border-box;
+}
+
+/* input[type=date] をバー全体に重ねて「ユーザー直接タップ」扱いにする */
+.date-bar{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+  z-index: 5;
+  pointer-events:auto;
+}
+
+
+/* 使い方（定員一括）ボタン：周囲のサイズに合わせる */
+.help-btn{
+  appearance: none;
+  border: 2px solid #e2e2e2;
+  background: #fff;
+  color: #000;
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-weight: 800;
+  font-size: 1.1em;
+  line-height: 1.2;
+}
