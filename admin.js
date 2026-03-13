@@ -2,7 +2,7 @@
  * admin.js (GitHub Pages 用) — 管理画面UI 完全コピー動作版
  * ========================================================= */
 
-const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbzrsSooV2Trzhz55FOs5jkYVg6scPnTnVenqboeNurvdEQ9LS3OcWNoUqruGFgGIMUo/exec';
+const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbwkkj4vp6v9gfjLZIxsLN-1aaUjyQebngxfTuMDPz62x_xg4dCadey920wmL3IYtS82kA/exec';
 
 const OPEN_HOUR = 9;
 const CLOSE_HOUR = 20;
