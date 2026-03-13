@@ -1,25 +1,20 @@
 /* =========================================================
  * admin.js (GitHub Pages 用) — 管理画面UI 完全コピー動作版
- * 方式:
- * - GAS WebApp /exec を JSONP（scriptタグ）で叩く（CORS不要）
- * - action + payload を GET で送る
- *
- * 必須: API_EXEC_URL をあなたの /exec URL に置換
  * ========================================================= */
 
 const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbxTbAzdXMPY5xTLP3c3VN9SPFxa1TQLk1M86JAkHh6an1_L-BL1xIoqp3ljdEkXZQid/exec';
 
-// 営業時間（UI表示）
 const OPEN_HOUR = 9;
 const CLOSE_HOUR = 20;
 
 let _currentDateStr = '';
 let _lastData = null;
+
 // ----------------- JSONP（CORS回避） -----------------
 function jsonp_(action, payload, opt){
   return new Promise((resolve, reject)=>{
     if(!API_EXEC_URL || !API_EXEC_URL.includes('/exec')){
-      reject(new Error('API_EXEC_URL が未設定です（/exec URL にしてください）'));
+      reject(new Error('API_EXEC_URL が未設定です'));
       return;
     }
 
@@ -59,7 +54,7 @@ function jsonp_(action, payload, opt){
     script.src = API_EXEC_URL + '?' + q.toString();
     script.onerror = ()=>{
       cleanup();
-      reject(new Error('JSONP 通信に失敗しました（URL/デプロイ/公開設定を確認）'));
+      reject(new Error('通信に失敗しました'));
     };
     document.head.appendChild(script);
 
@@ -72,7 +67,6 @@ function jsonp_(action, payload, opt){
 
 async function api_(action, payload, opt){
   const p = payload || {};
-  
   if (sessionStorage.getItem('kb_admin_ensured')) {
     p.skip_ensure = true;
   }
@@ -88,35 +82,37 @@ async function api_(action, payload, opt){
   }
   
   sessionStorage.setItem('kb_admin_ensured', '1');
-
   return (typeof resp.data !== 'undefined') ? resp.data : resp;
 }
 
 // ----------------- UI helpers -----------------
 function qs(id){ return document.getElementById(id); }
-function showBanner(msg){
+
+function showBanner(msg, isSuccess = false){
   const b = qs('banner');
+  if(!b) return;
   b.style.display = 'block';
   b.textContent = msg;
+  if(isSuccess) {
+    b.style.backgroundColor = '#10B981'; 
+    b.style.color = '#fff';
+  } else {
+    b.style.backgroundColor = '#EF4444'; 
+    b.style.color = '#fff';
+  }
 }
-function hideBanner(){ const b=qs('banner'); b.style.display='none'; b.textContent=''; }
+function hideBanner(){ const b=qs('banner'); if(b){ b.style.display='none'; b.textContent=''; } }
 
 let __overlayWatchTimer = null;
-let __overlayShownAt = 0;
 function __overlayWatchStart_(){
-  __overlayShownAt = Date.now();
   if(__overlayWatchTimer) clearTimeout(__overlayWatchTimer);
   __overlayWatchTimer = setTimeout(()=>{
-    try{
-      hideOverlay();
-      showBanner('通信が不安定です（タイムアウト復旧）。電波状況を確認して再操作してください。');
-    }catch(_){}
+    try{ hideOverlay(); showBanner('通信が不安定です。再操作してください。'); }catch(_){}
   }, 20000);
 }
 function __overlayWatchStop_(){
   if(__overlayWatchTimer) clearTimeout(__overlayWatchTimer);
   __overlayWatchTimer = null;
-  __overlayShownAt = 0;
 }
 
 function showOverlay(msg){
@@ -144,8 +140,10 @@ function openModal(title, bodyHtml, footerHtml){
 }
 function closeModal(){ qs('modal').style.display = 'none'; }
 function onModalClose(){
-  qs('modalClose').addEventListener('click', closeModal);
-  qs('modal').addEventListener('click', (e)=>{ if(e.target && e.target.id==='modal') closeModal(); });
+  const mc = qs('modalClose');
+  if(mc) mc.addEventListener('click', closeModal);
+  const m = qs('modal');
+  if(m) m.addEventListener('click', (e)=>{ if(e.target && e.target.id==='modal') closeModal(); });
 }
 
 function fmtJP(dateStr){
@@ -153,23 +151,6 @@ function fmtJP(dateStr){
   return dateStr.replace(/-/g,'/');
 }
 
-function sleepMs_(ms){ return new Promise(r=>setTimeout(r, ms)); }
-
-function getDeviceId_(){
-  try{
-    const k = 'kbperk_device_id';
-    let v = localStorage.getItem(k);
-    if(!v){
-      v = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('did_' + Date.now() + '_' + Math.floor(Math.random()*1e9));
-      localStorage.setItem(k, v);
-    }
-    return v;
-  }catch(_){
-    return 'did_' + Date.now();
-  }
-}
-
-// ----------------- Month summary calendar (予約一覧) -----------------
 async function openMonthSummaryModal_(){
   const base = _currentDateStr || new Date().toISOString().slice(0,10);
   const y = Number(base.slice(0,4));
@@ -177,10 +158,8 @@ async function openMonthSummaryModal_(){
   await showMonth_(y, m);
 }
 
-// ----------------- Day details (当日詳細) -----------------
 async function openDayDetailsModal_(dateStr){
   const d = await api_('adminDayDetails', { date: dateStr }, { timeoutMs: 20000 });
-
   const totals = d && d.totals ? d.totals : { peopleTotal:0, amountTotal:0, byTime:{} };
   const byTime = totals.byTime || {};
   const warnings = Array.isArray(d && d.warnings ? d.warnings : null) ? d.warnings : [];
@@ -221,15 +200,15 @@ async function openDayDetailsModal_(dateStr){
     const detail = (it.details_text ? escapeHtml_(it.details_text) : '');
     const created = escapeHtml_(it.created_at||'');
     return `
-      <div class="list-item" style="display:block;">
+      <div class="list-item" style="display:block; max-width:100%;">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
           <div style="font-weight:800;">${escapeHtml_(it.time||'--:--')} / ${name}</div>
-          <div style="text-align:right;min-width:120px;">
+          <div style="text-align:right;min-width:90px;">
             <div style="font-weight:800;">${head}人</div>
             <div class="muted">${fmtYen(amt)}円</div>
           </div>
         </div>
-        <div class="muted" style="margin-top:6px;">${contact}${contact? ' / ' : ''}${st}${created? ' / '+created : ''}</div>
+        <div class="muted" style="margin-top:6px; word-break:break-all;">${contact}${contact? ' / ' : ''}${st}${created? ' / '+created : ''}</div>
         ${detail? `<div style="margin-top:6px;white-space:pre-wrap;">${detail}</div>` : ''}
       </div>`;
   }).join('');
@@ -243,8 +222,8 @@ async function openDayDetailsModal_(dateStr){
       </div>
     </div>
     ${warnHtml}
-    <div style="overflow:auto;margin-top:10px;">
-      <table style="width:100%;border-collapse:collapse;min-width:520px;">
+    <div class="table-responsive" style="margin-top:10px;">
+      <table style="width:100%;border-collapse:collapse;min-width:300px;">
         <thead><tr><th style="text-align:left;">時間</th><th style="text-align:right;">人数</th><th style="text-align:right;">金額</th><th style="text-align:right;">件数</th></tr></thead>
         <tbody>${rows.join('')}</tbody>
       </table>
@@ -311,7 +290,7 @@ function renderMonthGrid_(year, month, dailyMap, mountId){
   const grid = document.createElement('div');
   grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(7, 1fr)';
-  grid.style.gap = '8px';
+  grid.style.gap = '4px';
 
   weekLabels.forEach(w=>{
     const h = document.createElement('div');
@@ -319,6 +298,7 @@ function renderMonthGrid_(year, month, dailyMap, mountId){
     h.style.textAlign = 'center';
     h.style.fontWeight = '800';
     h.style.padding = '6px 0';
+    h.style.fontSize = '0.9em';
     grid.appendChild(h);
   });
 
@@ -328,13 +308,13 @@ function renderMonthGrid_(year, month, dailyMap, mountId){
     cell.type = 'button';
     cell.className = 'press';
     cell.style.border = '1px solid #e8e8e8';
-    cell.style.borderRadius = '14px';
+    cell.style.borderRadius = '10px';
     cell.style.background = '#fff';
-    cell.style.minHeight = '62px';
-    cell.style.padding = '8px';
+    cell.style.minHeight = '50px';
+    cell.style.padding = '4px';
     cell.style.display = 'flex';
     cell.style.flexDirection = 'column';
-    cell.style.alignItems = 'flex-start';
+    cell.style.alignItems = 'center';
     cell.style.justifyContent = 'space-between';
 
     const dayNum = i - firstDow + 1;
@@ -352,9 +332,9 @@ function renderMonthGrid_(year, month, dailyMap, mountId){
     const people = Number(dailyMap[dateStr]||0) || 0;
 
     cell.innerHTML = `
-      <div style="font-weight:900;font-size:18px;">${dayNum}</div>
-      <div style="width:100%;display:flex;justify-content:flex-end;">
-        ${people>0 ? `<span style="border:1px solid #ddd;border-radius:999px;padding:4px 10px;font-weight:800;">${people}人</span>` : `<span class="muted"> </span>`}
+      <div style="font-weight:900;font-size:16px;">${dayNum}</div>
+      <div style="width:100%;display:flex;justify-content:center;">
+        ${people>0 ? `<span style="background:#E60012;color:#fff;border-radius:999px;padding:2px 6px;font-weight:800;font-size:12px;">${people}</span>` : `<span class="muted"> </span>`}
       </div>
     `;
 
@@ -374,7 +354,6 @@ function renderMonthGrid_(year, month, dailyMap, mountId){
   mount.appendChild(grid);
 }
 
-// ----------------- Data load/render -----------------
 async function setDate_(dateStr){
   _currentDateStr = dateStr;
   qs('admDateText').textContent = fmtJP(dateStr);
@@ -408,8 +387,8 @@ function renderSlots_(slots){
 
   const grid = document.createElement('div');
   grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = '1fr 0.35fr 0.35fr 1fr 0.35fr 0.35fr';
-  grid.style.gap = '10px';
+  grid.style.gridTemplateColumns = '1fr 0.3fr 0.4fr';
+  grid.style.gap = '8px';
   grid.style.alignItems = 'stretch';
 
   function mkCell(tag, cls, text){
@@ -419,58 +398,54 @@ function renderSlots_(slots){
     return el;
   }
 
-  for(let i=0;i<times.length;i+=2){
-    const t1 = times[i];
-    const t2 = times[i+1];
+  times.forEach((t)=>{
+    const s = map.get(t) || {time:t, open:false, cap:0, reserved:0};
 
-    [t1,t2].forEach((t,idx)=>{
-      const s = map.get(t) || {time:t, open:false, cap:0, reserved:0};
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toggle press';
+    btn.textContent = t;
+    btn.dataset.time = t;
+    btn.dataset.open = s.open ? '1':'0';
+    if(s.open) btn.classList.add('on');
 
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'toggle press';
-      btn.textContent = t;
-      btn.dataset.time = t;
-      btn.dataset.open = s.open ? '1':'0';
-      if(s.open) btn.classList.add('on');
+    const reserved = mkCell('div','toggle', String(s.reserved||0));
+    reserved.style.background = '#fff';
+    reserved.style.pointerEvents = 'none';
 
-      const reserved = mkCell('div','toggle', String(s.reserved||0));
-      reserved.style.background = '#fff';
-      reserved.style.pointerEvents = 'none';
+    const cap = document.createElement('input');
+    cap.type = 'number';
+    cap.min = '0';
+    cap.inputMode = 'numeric';
+    cap.value = String(s.cap||0);
+    cap.className = 'toggle';
+    cap.dataset.time = t;
+    cap.dataset.cap = '1';
+    cap.style.textAlign = 'center';
+    cap.style.padding = '0';
 
-      const cap = document.createElement('input');
-      cap.type = 'number';
-      cap.min = '0';
-      cap.inputMode = 'numeric';
-      cap.value = String(s.cap||0);
-      cap.className = 'toggle';
-      cap.dataset.time = t;
-      cap.dataset.cap = '1';
-      cap.style.textAlign = 'center';
-
-      btn.addEventListener('click', ()=>{
-        const open = btn.dataset.open === '1';
-        const hasRes = Number(s.reserved||0) > 0;
-        if(open && hasRes){
-          showBanner(`予約がある時間はOFFにできません：${t}`);
-          setTimeout(hideBanner, 2500);
-          return;
-        }
-        btn.dataset.open = open ? '0':'1';
-        btn.classList.toggle('on', !open);
-      });
-
-      cap.addEventListener('change', ()=>{
-        let v = Number(cap.value||0);
-        if(!isFinite(v) || v<0) v=0;
-        cap.value = String(v);
-      });
-
-      grid.appendChild(btn);
-      grid.appendChild(reserved);
-      grid.appendChild(cap);
+    btn.addEventListener('click', ()=>{
+      const open = btn.dataset.open === '1';
+      const hasRes = Number(s.reserved||0) > 0;
+      if(open && hasRes){
+        showBanner(`予約がある時間はOFFにできません：${t}`);
+        setTimeout(hideBanner, 2500);
+        return;
+      }
+      btn.dataset.open = open ? '0':'1';
+      btn.classList.toggle('on', !open);
     });
-  }
+
+    cap.addEventListener('change', ()=>{
+      let v = Number(cap.value||0);
+      if(!isFinite(v) || v<0) v=0;
+      cap.value = String(v);
+    });
+
+    grid.appendChild(btn);
+    grid.appendChild(reserved);
+    grid.appendChild(cap);
+  });
 
   root.appendChild(grid);
 }
@@ -481,17 +456,14 @@ function renderRemain_(slots){
     qs('admTimes').innerHTML = '<div class="muted">（本日、予約はありません）</div>';
     return;
   }
-  const html = `
-    <div class="remain-badges">
-      ${times.map(s=>{
-        const remain = Math.max(0, (s.cap||0)-(s.reserved||0));
-        const cls = remain<=0 ? 'alert' : (remain<=2 ? 'warn' : 'ok');
-        return `<div class="remain-badge ${cls}">
-          <span class="t">${s.time}</span>
-          <span class="m">${remain}/${s.cap}</span>
-        </div>`;
-      }).join('')}
+  const html = times.map(s=>{
+    const remain = Math.max(0, (s.cap||0)-(s.reserved||0));
+    const cls = remain<=0 ? 'alert' : (remain<=2 ? 'warn' : 'ok');
+    return `<div class="remain-badge ${cls}">
+      <span class="t">${s.time}</span>
+      <span class="m">${remain}/${s.cap}</span>
     </div>`;
+  }).join('');
   qs('admTimes').innerHTML = html;
 }
 
@@ -512,21 +484,21 @@ function renderList_(reservations){
 
     row.innerHTML = `
       <div class="row-main">
-        <div class="left">
+        <div class="left" style="flex-wrap:wrap;">
           <span class="chip">${r.time}</span>
           <span class="chip">${r.head_count||0}名</span>
           <span class="chip">¥${Number(r.amount||0).toLocaleString()}</span>
         </div>
       </div>
-      <div class="row-sub">
-        <div class="meta">
-          <span class="kv">${(r.name||'')}</span>
-          <span class="kv">${(r.phone||'')}</span>
+      <div class="row-sub" style="flex-direction:column; align-items:flex-start; gap:10px;">
+        <div class="meta" style="width:100%;">
+          <span class="kv font-bold">${(r.name||'')}</span>
+          <span class="kv" style="font-size:0.9em;">${(r.phone||'')}</span>
         </div>
-        <div class="ops" style="display:flex; gap:6px;">
-          <button class="btn-inline btn-in press" style="flex:1; min-width:50px; text-align:center; font-size:1em; padding:8px 4px;">IN</button>
-          <button class="btn-inline btn-noshow press" style="flex:1; min-width:50px; text-align:center; font-size:1em; padding:8px 4px;">来ず</button>
-          <button class="btn-inline btn-edit press" style="flex:1; min-width:50px; text-align:center; font-size:1em; padding:8px 4px; background:#EAB308; color:#fff; border:none; border-radius:8px;">変更</button>
+        <div class="ops" style="display:flex; gap:6px; width:100%;">
+          <button class="btn-inline btn-in press" style="flex:1; padding:10px 4px; font-size:1em;">IN</button>
+          <button class="btn-inline btn-noshow press" style="flex:1; padding:10px 4px; font-size:1em;">来ず</button>
+          <button class="btn-inline btn-edit press" style="flex:1; padding:10px 4px; font-size:1em; background:#EAB308; color:#fff; border:none; border-radius:8px;">変更</button>
         </div>
       </div>
     `;
@@ -596,11 +568,16 @@ function renderList_(reservations){
             } 
           });
           await loadAndRender_(); 
-          showBanner('人数を変更しました');
-          setTimeout(hideBanner, 3000);
+          
+          openModal(
+            '完了', 
+            '<div style="text-align:center; padding: 20px; font-size: 1.2em; font-weight: bold; color: #10B981;">✨ 人数を変更しました</div>', 
+            '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+          );
+
         } catch(e) {
           showBanner(e.message || String(e));
-          setTimeout(hideBanner, 3000);
+          setTimeout(hideBanner, 4000);
         } finally {
           hideOverlay();
         }
@@ -622,7 +599,8 @@ function renderDebts_(debts){
     const id = 'debt_' + btoa(unescape(encodeURIComponent(d.email||''))).replace(/=+/g,'');
     const line = document.createElement('label');
     line.style.display = 'block';
-    line.innerHTML = `<input type="checkbox" id="${id}" data-email="${d.email}"> ${d.email} <span class="muted">(${d.last_incident_at||''})</span>`;
+    line.style.wordBreak = 'break-all';
+    line.innerHTML = `<input type="checkbox" id="${id}" data-email="${d.email}"> ${d.email} <br><span class="muted" style="font-size:0.85em;">(${d.last_incident_at||''})</span>`;
     root.appendChild(line);
   });
 }
@@ -653,7 +631,6 @@ async function loadAndRender_(){
     renderList_((data.summary && data.summary.reservations) ? data.summary.reservations : []);
     renderDebts_(data.debts || []);
 
-    // ★ キャンペーン値を含む各種設定値の読み込みをUIに反映
     if (data.settings) {
       if (typeof data.settings.cutoffMinutes !== 'undefined'){
         qs('cutoffHours').value = String(Math.round((Number(data.settings.cutoffMinutes)||0)/60));
@@ -731,7 +708,7 @@ function wireActions_(){
 
   qs('admCommit').addEventListener('click', async ()=>{
     try{
-      showOverlay('書き込み中');
+      showOverlay('書き込み中...');
       const toggles = collectToggles_();
       const cutoffHours = Number(qs('cutoffHours').value||0)||0;
 
@@ -743,8 +720,14 @@ function wireActions_(){
         }
       });
       await loadAndRender_();
-      setOverlayText('反映しました');
-      setTimeout(()=>{ hideOverlay(); }, 1000);
+      hideOverlay();
+      
+      openModal(
+        '完了', 
+        '<div style="text-align:center; padding: 20px; font-size: 1.2em; font-weight: bold; color: #10B981;">✨ 登録を完了しました</div>', 
+        '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+      );
+
     }catch(e){
       hideOverlay();
       showBanner(e.message||String(e));
@@ -763,8 +746,8 @@ function wireActions_(){
           closeModal();
           await api_('adminForceClose', { date:_currentDateStr });
           await loadAndRender_();
-          showBanner('緊急閉鎖しました');
-          setTimeout(hideBanner, 2000);
+          showBanner('✨ 緊急閉鎖しました', true);
+          setTimeout(hideBanner, 4000);
         }catch(e){
           showBanner(e.message||String(e));
           setTimeout(hideBanner, 4000);
@@ -781,14 +764,17 @@ function wireActions_(){
     const checks = Array.from(qs('admDebts').querySelectorAll('input[type="checkbox"]:checked'));
     if(checks.length===0) return;
     try{
+      showOverlay('解除中...');
       for(const c of checks){
         const email = c.dataset.email;
         await api_('adminResolveDebt', { email });
       }
       await loadAndRender_();
-      showBanner('解除しました');
-      setTimeout(hideBanner, 1500);
+      hideOverlay();
+      showBanner('✨ 解除しました', true);
+      setTimeout(hideBanner, 4000);
     }catch(e){
+      hideOverlay();
       showBanner(e.message||String(e));
       setTimeout(hideBanner, 4000);
     }
@@ -796,9 +782,9 @@ function wireActions_(){
 
   qs('baseToggleBtn').addEventListener('click', ()=>{ const b=qs('baseBox'); b.hidden=!b.hidden; });
   
-  // ★ 変更箇所: 保存時にキャンペーン設定も合わせてGASに送信
   qs('saveBase').addEventListener('click', async ()=>{
     try{
+      showOverlay('保存中...');
       const cutoffHours = Number(qs('cutoffHours').value||0)||0;
       const campaign_start = qs('campStart').value || '';
       const campaign_end = qs('campEnd').value || '';
@@ -816,52 +802,70 @@ function wireActions_(){
           } 
         } 
       });
-      showBanner('設定を保存しました');
-      setTimeout(hideBanner, 1500);
+      hideOverlay();
+      
+      openModal(
+        '完了', 
+        '<div style="text-align:center; padding: 20px; font-size: 1.2em; font-weight: bold; color: #10B981;">✨ 設定を保存しました</div>', 
+        '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+      );
+
     }catch(e){
+      hideOverlay();
       showBanner(e.message||String(e));
       setTimeout(hideBanner, 4000);
     }
   });
 
-  qs('admHelpBulk').addEventListener('click', ()=>{
-    openModal('使い方（定員一括）',
-      `<div>「定員」欄に数字を入れて「定員一括変更」を押すと、全時間の定員入力に反映します。最後に「決定（反映）」で保存します。</div>`,
-      `<button class="btn press" onclick="document.getElementById('modal').style.display='none'">閉じる</button>`);
-  });
-  const admHelpSlotsBtn = qs('admHelpSlots');
-  if(admHelpSlotsBtn) {
-    admHelpSlotsBtn.addEventListener('click', ()=>{
-      openModal('使い方（時間枠）',
-        `<div>時間ボタンを押すとON/OFFが切り替わります（ON=黒）。予約がある時間はOFFにできません。定員は右の入力欄で調整し、「決定（反映）」で保存します。</div>`,
-        `<button class="btn press" onclick="document.getElementById('modal').style.display='none'">閉じる</button>`);
+  // ★「使い方」ボタンの詳細マニュアル化
+  const helpBtn = qs('admHelpMain');
+  if(helpBtn){
+    helpBtn.addEventListener('click', ()=>{
+      const content = `
+        <div style="font-size: 0.95em; line-height: 1.6; max-height: 60vh; overflow-y: auto; padding-right: 10px; text-align: left; color:#333;">
+          <h3 style="color:#2563EB; margin-top:0; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📅 日付の選択</h3>
+          <p style="margin-top:5px;">日付部分をタップして、管理したい日を選びます。</p>
+
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">⏰ 開放設定（枠の開け閉め・定員）</h3>
+          <ul style="padding-left: 20px; margin-top:5px;">
+            <li style="margin-bottom:5px;"><b>時間ボタン</b>: タップでON(黒)/OFF(白)を切替。予約がある時間はOFFにできません。</li>
+            <li style="margin-bottom:5px;"><b>定員入力</b>: 右側の数字で各時間の定員を設定します。</li>
+            <li style="margin-bottom:5px;"><b>定員一括変更</b>: 左上の入力欄に数字を入れて「定員一括変更」を押すと、全時間帯に数字がコピーされます。</li>
+            <li style="color:#E60012; font-weight:bold;">※変更後は必ず「決定（反映）」ボタンを押して保存してください！</li>
+          </ul>
+
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">👤 予約の受付・人数変更</h3>
+          <ul style="padding-left: 20px; margin-top:5px;">
+            <li style="margin-bottom:5px;"><b>IN</b>: 来店時に押します（チェックイン完了）。</li>
+            <li style="margin-bottom:5px;"><b>来ず</b>: 無断キャンセル時に押すと、「未回収対象」に自動登録されます。</li>
+            <li style="margin-bottom:5px;"><b>変更</b>: 当日の急な人数増減時に使用します。料金も自動再計算されます。</li>
+          </ul>
+
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📸 QRで来店受付（右下ボタン）</h3>
+          <p style="margin-top:5px;">カメラが起動し、お客様のスマホのQRコードを読み取ります。自動で来店回数がカウントされ、本日の予約が「IN」になります。</p>
+
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">💰 料金・基本・キャンペーン設定</h3>
+          <ul style="padding-left: 20px; margin-top:5px;">
+            <li style="margin-bottom:5px;"><b>料金設定</b>: 右下の青いボタンから、基本の単価（平日/土日祝）を設定します。</li>
+            <li style="margin-bottom:5px;"><b>基本設定</b>: キャンペーン期間と値引き額を設定すると、自動でユーザーの予約画面に適用されます。</li>
+            <li style="margin-bottom:5px;"><b>未回収対象</b>: 後日支払い待ちのお客様リストです。回収済になったらチェックして「選択を解除」を押します。</li>
+          </ul>
+
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">🚨 その他の機能</h3>
+          <ul style="padding-left: 20px; margin-top:5px;">
+            <li style="margin-bottom:5px;"><b>予約一覧</b>: カレンダー形式で日ごとの総予約数を確認できます。</li>
+            <li style="margin-bottom:5px;"><b>当日詳細</b>: その日の全予約一覧と、売上合計等を確認できます。</li>
+            <li style="margin-bottom:5px;"><b>緊急閉鎖</b>: 選択中の日をすべて閉鎖し、既存予約を「強制閉鎖」にします。</li>
+          </ul>
+        </div>
+      `;
+      openModal('システムの使い方マニュアル', content, `<button class="btn press" onclick="closeModal()" style="width:100%;">閉じる</button>`);
     });
   }
 }
 
-// ----------------- init -----------------
-window.addEventListener('error', ()=>{
-  try{
-    hideOverlay();
-  }catch(_){}
-});
-window.addEventListener('unhandledrejection', ()=>{
-  try{
-    hideOverlay();
-  }catch(_){}
-});
-
-document.addEventListener('DOMContentLoaded', async ()=>{
-  onModalClose();
-  wireActions_(); 
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = ('0'+(today.getMonth()+1)).slice(-2);
-  const d = ('0'+today.getDate()).slice(-2);
-  await setDate_(`${y}-${m}-${d}`);
-});
-
-(function attachPricingUI_(){
+// ----------------- UI追加機能（料金・QR） -----------------
+function attachPricingUI_(){
   function el(tag, props){
     const e = document.createElement(tag);
     if(props){
@@ -913,13 +917,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   }
 
   btn.addEventListener('click', openPricing_);
-  document.addEventListener('DOMContentLoaded', ()=>{ document.body.appendChild(btn); });
-})();
+  document.body.appendChild(btn); 
+}
 
-// ==========================================
-// QRコード読み取りと自動チェックイン(IN)処理
-// ==========================================
-(function attachQRScannerUI_(){
+function attachQRScannerUI_(){
   const script = document.createElement('script');
   script.src = 'https://unpkg.com/html5-qrcode';
   script.onload = () => {
@@ -943,7 +944,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     overlay.style.position = 'fixed';
     overlay.style.top = '0'; overlay.style.left = '0';
     overlay.style.width = '100%'; overlay.style.height = '100%';
-    overlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
+    overlay.style.backgroundColor = 'rgba(0,0,0,0.9)';
     overlay.style.zIndex = '10000';
     overlay.style.flexDirection = 'column';
     overlay.style.alignItems = 'center';
@@ -953,9 +954,9 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     readerDiv.id = 'qr-reader';
     readerDiv.style.width = '90%';
     readerDiv.style.maxWidth = '400px';
-    readerDiv.style.background = '#fff';
-    readerDiv.style.padding = '10px';
+    readerDiv.style.background = '#000';
     readerDiv.style.borderRadius = '12px';
+    readerDiv.style.overflow = 'hidden';
     
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '閉じる';
@@ -963,53 +964,105 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     closeBtn.style.marginTop = '20px';
     closeBtn.style.background = '#EF4444';
     closeBtn.style.color = '#fff';
-    closeBtn.style.padding = '10px 20px';
+    closeBtn.style.padding = '10px 30px';
     closeBtn.style.borderRadius = '12px';
+    closeBtn.style.fontSize = '18px';
+    closeBtn.style.fontWeight = 'bold';
     
     overlay.appendChild(readerDiv);
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
 
-    let html5QrcodeScanner = null;
+    let html5QrCode = null;
 
     btn.addEventListener('click', () => {
       overlay.style.display = 'flex';
-      html5QrcodeScanner = new Html5QrcodeScanner(
-        "qr-reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
       
-      html5QrcodeScanner.render(async (decodedText, decodedResult) => {
-        html5QrcodeScanner.clear();
-        overlay.style.display = 'none';
-        
-        try {
-          showOverlay('来店受付中...');
-          const res = await api_('admin_scan_qr', { member_id: decodedText, date: _currentDateStr });
-          
-          let msg = `${res.member_name} 様の来店を受付しました！\n（累計来店: ${res.new_count}回）`;
-          if (res.checked_in_count > 0) {
-            msg += `\n本日（${_currentDateStr}）の予約 ${res.checked_in_count} 件を「IN」に更新しました。`;
-          } else {
-            msg += `\n※本日（${_currentDateStr}）の予約が見つかりませんでした。`;
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("qr-reader");
+      }
+      
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      
+      html5QrCode.start({ facingMode: "environment" }, config, async (decodedText) => {
+        html5QrCode.stop().then(async () => {
+          overlay.style.display = 'none';
+          try {
+            showOverlay('来店受付中...');
+            const res = await api_('admin_scan_qr', { member_id: decodedText, date: _currentDateStr });
+            
+            let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: ${res.new_count}回）`;
+            if (res.checked_in_count > 0) {
+              msg += `<br>本日（${_currentDateStr}）の予約 ${res.checked_in_count} 件を「IN」に更新しました。`;
+            } else {
+              msg += `<br><span style="color:#d32f2f;">※本日（${_currentDateStr}）の予約が見つかりませんでした。</span>`;
+            }
+            
+            openModal(
+              '受付完了', 
+              `<div style="text-align:center; padding: 10px; font-size: 1.1em; font-weight: bold; line-height: 1.5;">${msg}</div>`, 
+              '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+            );
+            await loadAndRender_();
+          } catch(e) {
+            showBanner('エラー: ' + (e.message || String(e)));
+            setTimeout(hideBanner, 5000);
+          } finally {
+            hideOverlay();
           }
-          
-          showBanner(msg);
-          await loadAndRender_();
-          setTimeout(hideBanner, 6000);
-        } catch(e) {
-          showBanner('エラー: ' + (e.message || String(e)));
-          setTimeout(hideBanner, 5000);
-        } finally {
-          hideOverlay();
-        }
-      }, (error) => {
-        // スキャン中は定期的にエラー（未検出）が出るため無視
+        });
+      }, (err) => {
+      }).catch(err => {
+        alert('カメラの起動に失敗しました。スマホの設定でカメラへのアクセスを許可してください。');
+        overlay.style.display = 'none';
       });
     });
     
     closeBtn.addEventListener('click', () => {
-      if(html5QrcodeScanner) html5QrcodeScanner.clear();
-      overlay.style.display = 'none';
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          overlay.style.display = 'none';
+        }).catch(() => {
+          overlay.style.display = 'none';
+        });
+      } else {
+        overlay.style.display = 'none';
+      }
     });
   };
-  document.head.appendChild(script);
-})();
+  document.body.appendChild(script);
+}
+
+// ----------------- init -----------------
+window.addEventListener('error', ()=>{
+  try{ hideOverlay(); }catch(_){}
+});
+window.addEventListener('unhandledrejection', ()=>{
+  try{ hideOverlay(); }catch(_){}
+});
+
+document.addEventListener('DOMContentLoaded', async ()=>{
+  onModalClose();
+  attachPricingUI_();
+  attachQRScannerUI_();
+  wireActions_(); 
+  
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = ('0'+(today.getMonth()+1)).slice(-2);
+  const d = ('0'+today.getDate()).slice(-2);
+  await setDate_(`${y}-${m}-${d}`);
+});
+
+let emptySince = null;
+setInterval(()=>{
+  const essential = qs('admToggles') || qs('admList');
+  if(!essential || !document.body.contains(essential)){
+    emptySince = emptySince ?? Date.now();
+    if(Date.now() - emptySince > 5000){
+      location.reload();
+    }
+  }else{
+    emptySince = null;
+  }
+}, 2000);
