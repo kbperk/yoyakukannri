@@ -1,5 +1,6 @@
 /* =========================================================
  * admin.js (GitHub Pages 用) — 管理画面UI 完全コピー動作版
+ * ※ P1: マジックリンク認証＆セッショントークン化 組み込み済み
  * ========================================================= */
 
 const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbwkkj4vp6v9gfjLZIxsLN-1aaUjyQebngxfTuMDPz62x_xg4dCadey920wmL3IYtS82kA/exec';
@@ -67,6 +68,11 @@ function jsonp_(action, payload, opt){
 
 async function api_(action, payload, opt){
   const p = payload || {};
+  
+  // ★ P1: 発行されたセッショントークンをペイロードに付与して毎回送信
+  const token = sessionStorage.getItem('kb_admin_token');
+  if(token) p.token = token;
+
   if (sessionStorage.getItem('kb_admin_ensured')) {
     p.skip_ensure = true;
   }
@@ -77,12 +83,57 @@ async function api_(action, payload, opt){
 
   const resp = await jsonp_(action, p, { timeoutMs: options.timeoutMs, requestId: reqId });
   if(!resp) throw new Error('APIレスポンスが空です');
+  
   if(resp.status === 'error' || resp.ok === false){
-    throw new Error(resp.error || 'API Error');
+    const errMsg = resp.error || 'API Error';
+    
+    // ★ P1: セッショントークン期限切れ・不正なアクセスのハンドリング
+    if (errMsg === 'SessionExpired' || errMsg === 'AuthFailed') {
+      sessionStorage.removeItem('kb_admin_token');
+      document.body.innerHTML = '<div style="padding:30px;text-align:center;color:#EF4444;font-weight:bold;font-size:1.2em;margin-top:50px;">セッションの有効期限が切れました。<br><br>セキュリティのため、ブックマークから再度画面を開き直してください。</div>';
+      throw new Error('セッション期限切れ');
+    }
+    
+    throw new Error(errMsg);
   }
   
   sessionStorage.setItem('kb_admin_ensured', '1');
   return (typeof resp.data !== 'undefined') ? resp.data : resp;
+}
+
+// ----------------- ★ P1: マジックリンク認証初期化 -----------------
+async function initAuth_() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const key = urlParams.get('key');
+
+  // URLに鍵（?key=...）がついている場合：GASで検証してトークンをもらう
+  if (key) {
+    showOverlay('鍵を認証中...');
+    try {
+      const res = await jsonp_('verify_magic_link', { key: key }, { timeoutMs: 15000 });
+      if (res && res.data && res.data.token) {
+        // トークンをブラウザに保存
+        sessionStorage.setItem('kb_admin_token', res.data.token);
+        
+        // ★画面共有時の漏洩防止：URLバーから「?key=...」を即座に消し去る
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      } else {
+        throw new Error("AuthFailed");
+      }
+    } catch(e) {
+      hideOverlay();
+      document.body.innerHTML = '<div style="padding:30px;text-align:center;color:#EF4444;font-weight:bold;font-size:1.2em;margin-top:50px;">認証に失敗しました。<br><br>URLが間違っているか、鍵が古くなっています。<br>正しい合鍵URL（ブックマーク）からアクセスしてください。</div>';
+      throw new Error("Auth Failed");
+    }
+  }
+
+  // 鍵がない場合、すでにトークンを持っているかチェックする
+  const token = sessionStorage.getItem('kb_admin_token');
+  if (!token) {
+    document.body.innerHTML = '<div style="padding:30px;text-align:center;color:#EF4444;font-weight:bold;font-size:1.2em;margin-top:50px;">URLが不正です。<br><br>管理者用の正しいブックマーク（合鍵付きURL）からアクセスしてください。</div>';
+    throw new Error("No Token");
+  }
 }
 
 // ----------------- UI helpers -----------------
@@ -1047,11 +1098,19 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   attachQRScannerUI_();
   wireActions_(); 
   
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = ('0'+(today.getMonth()+1)).slice(-2);
-  const d = ('0'+today.getDate()).slice(-2);
-  await setDate_(`${y}-${m}-${d}`);
+  try {
+    // ★ P1: 画面起動時にまずマジックリンク認証とトークン検証を行う
+    await initAuth_();
+    
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = ('0'+(today.getMonth()+1)).slice(-2);
+    const d = ('0'+today.getDate()).slice(-2);
+    await setDate_(`${y}-${m}-${d}`);
+  } catch(e) {
+    // 認証失敗時は initAuth_() 内で画面を書き換えるため、ここでのエラー処理は省略
+    console.warn("Auth process stopped:", e.message);
+  }
 });
 
 let emptySince = null;
