@@ -22,6 +22,8 @@
 
 html, body {
   height: 100%;
+  width: 100vw; /* スマホ画面幅に完全に固定 */
+  overflow-x: hidden; /* ★ 横揺れ・はみ出しを完全に防止 */
   -webkit-text-size-adjust: 100%;
 }
 
@@ -77,6 +79,7 @@ body {
   border-bottom: 8px solid #F2F4F6; /* 区切り線 */
   padding-bottom: 8px;
   background: #fff;
+  max-width: 100%; /* はみ出し防止 */
 }
 
 .card:last-of-type {
@@ -340,6 +343,7 @@ button {
   padding: 16px;
   background: #fff;
   position: relative;
+  max-width: 100%; /* はみ出し防止 */
 }
 
 /* 行の状態スタイル */
@@ -473,6 +477,7 @@ input:checked + .slider:before {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 24px;
+  max-width: 100%;
 }
 
 .grid label {
@@ -489,6 +494,8 @@ input:checked + .slider:before {
   border: 1px solid var(--line);
   border-radius: 8px;
   font-size: 1.1em;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .note {
@@ -606,24 +613,28 @@ input:checked + .slider:before {
 
 /* ===== UIトレース強化（画像準拠） ===== */
 
+/* ★ 修正：画面からはみ出さないように自動で折り返す設定に変更 */
 .top-actions{
   display:flex;
-  justify-content:flex-end;
+  justify-content:space-between;
   align-items:center;
-  gap:14px;
-  margin: 6px 0 10px;
-  flex-wrap:nowrap;
+  gap:10px;
+  margin: 10px 0 15px;
+  flex-wrap:wrap; /* 超重要: 画面幅に応じてボタンを下に逃がす */
 }
 
+/* ★ 修正：文字サイズと余白を微調整し、スマホで2行2列に整列させる */
 .btn-pill{
   border-radius: 999px;
-  padding: 14px 22px;
+  padding: 12px 10px; 
   font-weight: 900;
-  font-size: clamp(20px, 5.2vw, 26px);
+  font-size: clamp(16px, 4.2vw, 22px);
   line-height: 1;
   border: 2px solid transparent;
   box-shadow: 0 2px 0 rgba(0,0,0,0.15);
   white-space: nowrap;
+  flex: 1 1 calc(50% - 10px); /* スマホで綺麗に2列に並ぶ魔法の設定 */
+  text-align: center;
 }
 
 .btn-blue{
@@ -663,6 +674,7 @@ input:checked + .slider:before {
   border-radius: 12px;
   border: 2px solid #bdbdbd;
   background:#fff;
+  max-width: 100%;
 }
 
 /* 時間/予約数/定員のセルの見た目を画像に寄せる */
@@ -671,8 +683,9 @@ input:checked + .slider:before {
   border: 1px solid #e2e2e2;
   background:#fff;
   font-weight: 900;
-  font-size: clamp(26px, 7vw, 34px);
-  padding: 18px 12px;
+  font-size: clamp(22px, 5.5vw, 30px);
+  padding: 14px 10px;
+  min-width: 0; /* ★ はみ出し防止 */
 }
 
 #admToggles button.toggle{
@@ -687,12 +700,14 @@ input:checked + .slider:before {
 
 #admToggles input.toggle{
   width: 100%;
-  padding: 16px 10px;
-  font-size: clamp(28px, 7vw, 34px);
+  padding: 14px 10px;
+  font-size: clamp(22px, 5.5vw, 30px);
+  min-width: 0; /* ★ はみ出し防止 */
+  box-sizing: border-box;
 }
 
 @media (max-width: 480px){
-  .btn-pill{ padding: 12px 18px; }
+  .btn-pill{ padding: 12px 8px; font-size: clamp(14px, 3.8vw, 18px); }
   .bulk-cap-input{ height: 68px; font-size: 38px; width: 110px; }
 }
 
@@ -757,7 +772,8 @@ input:checked + .slider:before {
   border: 2px solid #e2e2e2;
   border-radius: 14px;
   background: #fff;
-  font-size: clamp(28px, 7vw, 36px);
+  /* ★ 修正：一部のスマホで横にはみ出るため、フォントの最大サイズをわずかに縮小 */
+  font-size: clamp(24px, 6vw, 32px);
   font-weight: 900;
   display:flex;
   align-items:center;
