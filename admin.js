@@ -1,6 +1,5 @@
 /* =========================================================
  * admin.js (GitHub Pages 用) — 管理画面UI 完全コピー動作版
- * ※ P1: マジックリンク認証＆セッショントークン化 組み込み済み
  * ========================================================= */
 
 const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbwkkj4vp6v9gfjLZIxsLN-1aaUjyQebngxfTuMDPz62x_xg4dCadey920wmL3IYtS82kA/exec';
@@ -69,7 +68,6 @@ function jsonp_(action, payload, opt){
 async function api_(action, payload, opt){
   const p = payload || {};
   
-  // ★ P1: 発行されたセッショントークンをペイロードに付与して毎回送信
   const token = sessionStorage.getItem('kb_admin_token');
   if(token) p.token = token;
 
@@ -86,14 +84,11 @@ async function api_(action, payload, opt){
   
   if(resp.status === 'error' || resp.ok === false){
     const errMsg = resp.error || 'API Error';
-    
-    // ★ P1: セッショントークン期限切れ・不正なアクセスのハンドリング
     if (errMsg === 'SessionExpired' || errMsg === 'AuthFailed') {
       sessionStorage.removeItem('kb_admin_token');
       document.body.innerHTML = '<div style="padding:30px;text-align:center;color:#EF4444;font-weight:bold;font-size:1.2em;margin-top:50px;">セッションの有効期限が切れました。<br><br>セキュリティのため、ブックマークから再度画面を開き直してください。</div>';
       throw new Error('セッション期限切れ');
     }
-    
     throw new Error(errMsg);
   }
   
@@ -101,21 +96,17 @@ async function api_(action, payload, opt){
   return (typeof resp.data !== 'undefined') ? resp.data : resp;
 }
 
-// ----------------- ★ P1: マジックリンク認証初期化 -----------------
+// ----------------- マジックリンク認証初期化 -----------------
 async function initAuth_() {
   const urlParams = new URLSearchParams(window.location.search);
   const key = urlParams.get('key');
 
-  // URLに鍵（?key=...）がついている場合：GASで検証してトークンをもらう
   if (key) {
     showOverlay('鍵を認証中...');
     try {
       const res = await jsonp_('verify_magic_link', { key: key }, { timeoutMs: 15000 });
       if (res && res.data && res.data.token) {
-        // トークンをブラウザに保存
         sessionStorage.setItem('kb_admin_token', res.data.token);
-        
-        // ★画面共有時の漏洩防止：URLバーから「?key=...」を即座に消し去る
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
       } else {
@@ -128,7 +119,6 @@ async function initAuth_() {
     }
   }
 
-  // 鍵がない場合、すでにトークンを持っているかチェックする
   const token = sessionStorage.getItem('kb_admin_token');
   if (!token) {
     document.body.innerHTML = '<div style="padding:30px;text-align:center;color:#EF4444;font-weight:bold;font-size:1.2em;margin-top:50px;">URLが不正です。<br><br>管理者用の正しいブックマーク（合鍵付きURL）からアクセスしてください。</div>';
@@ -543,13 +533,14 @@ function renderList_(reservations){
       </div>
       <div class="row-sub" style="flex-direction:column; align-items:flex-start; gap:10px;">
         <div class="meta" style="width:100%;">
-          <span class="kv font-bold">${(r.name||'')}</span>
-          <span class="kv" style="font-size:0.9em;">${(r.phone||'')}</span>
+          <span class="kv font-bold">${escapeHtml_(r.name||'')}</span>
+          <span class="kv" style="font-size:0.9em;">${escapeHtml_(r.phone||'')}</span>
         </div>
-        <div class="ops" style="display:flex; gap:6px; width:100%;">
+        <div class="ops" style="display:flex; gap:6px; width:100%; flex-wrap:wrap;">
           <button class="btn-inline btn-in press" style="flex:1; padding:10px 4px; font-size:1em;">IN</button>
           <button class="btn-inline btn-noshow press" style="flex:1; padding:10px 4px; font-size:1em;">来ず</button>
           <button class="btn-inline btn-edit press" style="flex:1; padding:10px 4px; font-size:1em; background:#EAB308; color:#fff; border:none; border-radius:8px;">変更</button>
+          <button class="btn-inline btn-detail press" style="flex:1; padding:10px 4px; font-size:1em; background:#6B7280; color:#fff; border:none; border-radius:8px;">詳細</button>
         </div>
       </div>
     `;
@@ -557,6 +548,7 @@ function renderList_(reservations){
     const inBtn = row.querySelector('.btn-in');
     const nsBtn = row.querySelector('.btn-noshow');
     const editBtn = row.querySelector('.btn-edit');
+    const detailBtn = row.querySelector('.btn-detail'); // ★顧客詳細ボタン
 
     inBtn.addEventListener('click', async ()=>{
       try{
@@ -633,6 +625,20 @@ function renderList_(reservations){
           hideOverlay();
         }
       });
+    });
+
+    // ★ 顧客詳細モーダルの表示アクション
+    detailBtn.addEventListener('click', () => {
+      openModal('顧客詳細', `
+        <table style="width:100%; text-align:left; border-collapse: collapse; font-size: 1.05em; line-height:1.5;">
+          <tr style="border-bottom:1px solid #eee;"><th style="padding:10px 0;width:35%;color:#666;">氏名</th><td style="font-weight:bold;">${escapeHtml_(r.name)}</td></tr>
+          <tr style="border-bottom:1px solid #eee;"><th style="padding:10px 0;color:#666;">会員ID</th><td style="font-weight:bold; font-family:monospace;">${escapeHtml_(r.member_id)}</td></tr>
+          <tr style="border-bottom:1px solid #eee;"><th style="padding:10px 0;color:#666;">電話番号</th><td>${escapeHtml_(r.phone)}</td></tr>
+          <tr style="border-bottom:1px solid #eee;"><th style="padding:10px 0;color:#666;">メール</th><td style="word-break:break-all;">${escapeHtml_(r.email)}</td></tr>
+          <tr style="border-bottom:1px solid #eee;"><th style="padding:10px 0;color:#666;">住所</th><td>${escapeHtml_(r.address || '未登録')}</td></tr>
+          <tr><th style="padding:10px 0;color:#666;">来店回数</th><td style="font-weight:bold; color:#E60012;">${Number(r.visit_count||0)} 回</td></tr>
+        </table>
+      `, '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">閉じる</button></div>');
     });
 
     root.appendChild(row);
@@ -868,7 +874,6 @@ function wireActions_(){
     }
   });
 
-  // ★「使い方」ボタンの詳細マニュアル化
   const helpBtn = qs('admHelpMain');
   if(helpBtn){
     helpBtn.addEventListener('click', ()=>{
@@ -879,34 +884,28 @@ function wireActions_(){
 
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">⏰ 開放設定（枠の開け閉め・定員）</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>時間ボタン</b>: タップでON(黒)/OFF(白)を切替。予約がある時間はOFFにできません。</li>
+            <li style="margin-bottom:5px;"><b>時間ボタン</b>: タップでON(黒)/OFF(白) 切替。予約がある時間はOFFにできません。</li>
             <li style="margin-bottom:5px;"><b>定員入力</b>: 右側の数字で各時間の定員を設定します。</li>
-            <li style="margin-bottom:5px;"><b>定員一括変更</b>: 左上の入力欄に数字を入れて「定員一括変更」を押すと、全時間帯に数字がコピーされます。</li>
+            <li style="margin-bottom:5px;"><b>定員一括変更</b>: 左上の入力欄に数字を入れて「定員一括変更」を押すと全時間帯に反映されます。</li>
             <li style="color:#E60012; font-weight:bold;">※変更後は必ず「決定（反映）」ボタンを押して保存してください！</li>
           </ul>
 
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">👤 予約の受付・人数変更</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
             <li style="margin-bottom:5px;"><b>IN</b>: 来店時に押します（チェックイン完了）。</li>
-            <li style="margin-bottom:5px;"><b>来ず</b>: 無断キャンセル時に押すと、「未回収対象」に自動登録されます。</li>
+            <li style="margin-bottom:5px;"><b>来ず</b>: 無断キャンセル時に押すと「未回収対象」に自動登録されます。</li>
             <li style="margin-bottom:5px;"><b>変更</b>: 当日の急な人数増減時に使用します。料金も自動再計算されます。</li>
+            <li style="margin-bottom:5px;"><b>詳細</b>: お客様の住所や累計来店回数などを確認できます。</li>
           </ul>
 
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📸 QRで来店受付（右下ボタン）</h3>
-          <p style="margin-top:5px;">カメラが起動し、お客様のスマホのQRコードを読み取ります。自動で来店回数がカウントされ、本日の予約が「IN」になります。</p>
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📸 QRで来店受付（飛び込み対応）</h3>
+          <p style="margin-top:5px;">お客様のスマホのQRを読み取ります。当日の日付が表示され、入力した人数に応じて即座に予定料金を計算します。「IN」を押すと来店回数が加算され、料金が確定します。</p>
 
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">💰 料金・基本・キャンペーン設定</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>料金設定</b>: 右下の青いボタンから、基本の単価（平日/土日祝）を設定します。</li>
-            <li style="margin-bottom:5px;"><b>基本設定</b>: キャンペーン期間と値引き額を設定すると、自動でユーザーの予約画面に適用されます。</li>
-            <li style="margin-bottom:5px;"><b>未回収対象</b>: 後日支払い待ちのお客様リストです。回収済になったらチェックして「選択を解除」を押します。</li>
-          </ul>
-
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">🚨 その他の機能</h3>
-          <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>予約一覧</b>: カレンダー形式で日ごとの総予約数を確認できます。</li>
-            <li style="margin-bottom:5px;"><b>当日詳細</b>: その日の全予約一覧と、売上合計等を確認できます。</li>
-            <li style="margin-bottom:5px;"><b>緊急閉鎖</b>: 選択中の日をすべて閉鎖し、既存予約を「強制閉鎖」にします。</li>
+            <li style="margin-bottom:5px;"><b>料金設定</b>: 右下の青いボタンから、基本単価（平日/土日祝）を設定します。</li>
+            <li style="margin-bottom:5px;"><b>基本設定</b>: キャンペーン期間と値引き額を設定できます。</li>
+            <li style="margin-bottom:5px;"><b>未回収対象</b>: 後日支払い待ちリストです。回収済になったら「選択を解除」を押します。</li>
           </ul>
         </div>
       `;
@@ -971,6 +970,7 @@ function attachPricingUI_(){
   document.body.appendChild(btn); 
 }
 
+// ★ フロントでの料金計算・人数選択・IN確定を伴うQRスキャナー
 function attachQRScannerUI_(){
   const script = document.createElement('script');
   script.src = 'https://unpkg.com/html5-qrcode';
@@ -1038,29 +1038,79 @@ function attachQRScannerUI_(){
       html5QrCode.start({ facingMode: "environment" }, config, async (decodedText) => {
         html5QrCode.stop().then(async () => {
           overlay.style.display = 'none';
-          try {
-            showOverlay('来店受付中...');
-            const res = await api_('admin_scan_qr', { member_id: decodedText, date: _currentDateStr });
-            
-            let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: ${res.new_count}回）`;
-            if (res.checked_in_count > 0) {
-              msg += `<br>本日（${_currentDateStr}）の予約 ${res.checked_in_count} 件を「IN」に更新しました。`;
-            } else {
-              msg += `<br><span style="color:#d32f2f;">※本日（${_currentDateStr}）の予約が見つかりませんでした。</span>`;
+
+          // フロントエンドでの即時料金計算ロジック
+          const settings = _lastData ? _lastData.settings : {};
+          const d = new Date();
+          const todayStr = _currentDateStr || (d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2));
+
+          const calcAmount = (head) => {
+            if (!settings || String(settings.pricingEnabled).toLowerCase() !== 'true') return 0;
+            const dt = new Date(todayStr);
+            const dow = dt.getDay();
+            const isWeekend = (dow === 0 || dow === 6);
+            const unit = isWeekend ? Number(settings.priceWeekend||0) : Number(settings.priceWeekday||0);
+            let amt = head * unit;
+            const cDisc = Number(settings.campaign_discount||0);
+            if (cDisc > 0 && settings.campaign_start && settings.campaign_end && todayStr >= settings.campaign_start && todayStr <= settings.campaign_end) {
+              amt = Math.max(0, amt - (cDisc * head));
             }
-            
-            openModal(
-              '受付完了', 
-              `<div style="text-align:center; padding: 10px; font-size: 1.1em; font-weight: bold; line-height: 1.5;">${msg}</div>`, 
-              '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
-            );
-            await loadAndRender_();
-          } catch(e) {
-            showBanner('エラー: ' + (e.message || String(e)));
-            setTimeout(hideBanner, 5000);
-          } finally {
-            hideOverlay();
-          }
+            return amt;
+          };
+
+          openModal('スキャン成功', `
+            <div style="text-align:center; padding:10px;">
+              <p style="font-weight:bold; color:#2563EB; font-size:1.1em; margin-bottom:15px;">日付: ${todayStr}</p>
+              <p style="font-size:0.9em; color:#666; margin-bottom:10px;">会員ID: <span style="font-family:monospace; font-weight:bold;">${decodedText}</span></p>
+              
+              <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px;">
+                <p style="font-weight:bold; margin-bottom:10px;">来店人数を入力してください</p>
+                <input type="number" id="qrHeadCount" value="1" min="1" inputmode="numeric" style="width:100px; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:10px;">
+                <p style="font-size:1.1em; font-weight:bold;">予定料金: <strong id="qrEstAmount" style="color:#E60012; font-size:1.3em;">${calcAmount(1).toLocaleString()}</strong> 円</p>
+              </div>
+            </div>
+          `, `
+            <div style="display:flex; gap:10px; width:100%;">
+              <button class="btn-outline press" style="flex:1;" onclick="closeModal()">キャンセル</button>
+              <button class="btn press" id="qrInBtn" style="flex:1; background:#10B981; color:#fff; border:none;">IN (確定)</button>
+            </div>
+          `);
+
+          // 人数変更に連動して料金を再計算
+          document.getElementById('qrHeadCount').addEventListener('input', (e) => {
+            const h = Number(e.target.value) || 0;
+            document.getElementById('qrEstAmount').textContent = calcAmount(h).toLocaleString();
+          });
+
+          // INボタン押下で初めてバックエンドに送信
+          document.getElementById('qrInBtn').addEventListener('click', async () => {
+            const head = Number(document.getElementById('qrHeadCount').value) || 0;
+            closeModal();
+            try {
+              showOverlay('来店受付中...');
+              const res = await api_('admin_scan_qr', { member_id: decodedText, head_count: head, date: todayStr });
+              
+              let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
+              if (res.checked_in_count > 0) {
+                msg += `<br><br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${Number(res.amount||0).toLocaleString()}円</strong>`;
+              } else {
+                msg += `<br><span style="color:#d32f2f;">※予約の処理に失敗しました。</span>`;
+              }
+              
+              openModal(
+                '受付完了', 
+                `<div style="text-align:center; padding: 10px; font-size: 1.1em; line-height: 1.5;">${msg}</div>`, 
+                '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+              );
+              await loadAndRender_();
+            } catch(e) {
+              showBanner('エラー: ' + (e.message || String(e)));
+              setTimeout(hideBanner, 5000);
+            } finally {
+              hideOverlay();
+            }
+          });
+
         });
       }, (err) => {
       }).catch(err => {
@@ -1108,7 +1158,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     const d = ('0'+today.getDate()).slice(-2);
     await setDate_(`${y}-${m}-${d}`);
   } catch(e) {
-    // 認証失敗時は initAuth_() 内で画面を書き換えるため、ここでのエラー処理は省略
     console.warn("Auth process stopped:", e.message);
   }
 });
