@@ -1060,11 +1060,14 @@ function attachQRScannerUI_(){
 
           try {
             showOverlay('データ照会中...');
-            // ★ バックエンドにユーザーと予約情報を問い合わせ
-            const qrData = await api_('adminCheckQr', {
-              member_id: scannedMemberId,
-              reservation_id: scannedResId,
-              date: todayStr
+            // ★ バックエンドにユーザーと予約情報を問い合わせ（既存の adminUpdateStatus を利用してエラーを回避）
+            const qrData = await api_('adminUpdateStatus', {
+              data: {
+                update_type: 'qr_check',
+                member_id: scannedMemberId,
+                reservation_id: scannedResId,
+                date: todayStr
+              }
             });
             hideOverlay();
 
@@ -1077,7 +1080,6 @@ function attachQRScannerUI_(){
 
             let resInfoHtml = '';
             let inputHtml = '';
-            let initialHead = 1;
 
             const calcAmount = (head) => {
               if (!settings || String(settings.pricingEnabled).toLowerCase() !== 'true') return 0;
@@ -1098,7 +1100,6 @@ function attachQRScannerUI_(){
               const timeFmt = targetRes.slot_id ? targetRes.slot_id.slice(11,16) : '--:--';
               const headFmt = targetRes.head_count || 0;
               const amtFmt = Number(targetRes.amount || 0).toLocaleString();
-              initialHead = headFmt;
 
               resInfoHtml = `
                 <p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>
@@ -1159,12 +1160,15 @@ function attachQRScannerUI_(){
               try {
                 showOverlay('来店受付中...');
                 
-                // ★ API呼び出し名を見直し（_ を除外して adminScanQr とする）
-                const res = await api_('adminScanQr', { 
+                // ★ 確定時も adminUpdateStatus を利用
+                const res = await api_('adminUpdateStatus', { 
+                  data: {
+                    update_type: 'qr_commit',
                     member_id: scannedMemberId, 
-                    reservation_id: finalResId, // 照会で特定した予約IDを使用
+                    reservation_id: finalResId,
                     head_count: head, 
                     date: todayStr 
+                  }
                 });
                 
                 let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
