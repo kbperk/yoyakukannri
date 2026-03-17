@@ -548,7 +548,7 @@ function renderList_(reservations){
     const inBtn = row.querySelector('.btn-in');
     const nsBtn = row.querySelector('.btn-noshow');
     const editBtn = row.querySelector('.btn-edit');
-    const detailBtn = row.querySelector('.btn-detail'); // ★顧客詳細ボタン
+    const detailBtn = row.querySelector('.btn-detail'); 
 
     inBtn.addEventListener('click', async ()=>{
       try{
@@ -627,7 +627,6 @@ function renderList_(reservations){
       });
     });
 
-    // ★ 顧客詳細モーダルの表示アクション
     detailBtn.addEventListener('click', () => {
       openModal('顧客詳細', `
         <table style="width:100%; text-align:left; border-collapse: collapse; font-size: 1.05em; line-height:1.5;">
@@ -970,7 +969,7 @@ function attachPricingUI_(){
   document.body.appendChild(btn); 
 }
 
-// ★ フロントでの料金計算・人数選択・IN確定を伴うQRスキャナー
+// ★ カンマ区切りのQRデータを解析し、予約IDの有無で処理を分けるよう修正
 function attachQRScannerUI_(){
   const script = document.createElement('script');
   script.src = 'https://unpkg.com/html5-qrcode';
@@ -1039,7 +1038,16 @@ function attachQRScannerUI_(){
         html5QrCode.stop().then(async () => {
           overlay.style.display = 'none';
 
-          // フロントエンドでの即時料金計算ロジック
+          // ★ カンマ区切りのQRデータを解析
+          const parts = decodedText.split(',');
+          const scannedMemberId = parts[0].trim();
+          const scannedResId = parts.length > 1 ? parts[1].trim() : null;
+
+          // 予約ステータスのUI表示
+          const resInfoHtml = scannedResId 
+              ? `<p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>`
+              : `<p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>`;
+
           const settings = _lastData ? _lastData.settings : {};
           const d = new Date();
           const todayStr = _currentDateStr || (d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2));
@@ -1060,13 +1068,15 @@ function attachQRScannerUI_(){
 
           openModal('スキャン成功', `
             <div style="text-align:center; padding:10px;">
-              <p style="font-weight:bold; color:#2563EB; font-size:1.1em; margin-bottom:15px;">日付: ${todayStr}</p>
-              <p style="font-size:0.9em; color:#666; margin-bottom:10px;">会員ID: <span style="font-family:monospace; font-weight:bold;">${decodedText}</span></p>
+              <p style="font-weight:bold; color:#2563EB; font-size:1.1em; margin-bottom:10px;">日付: ${todayStr}</p>
+              ${resInfoHtml}
+              <p style="font-size:0.9em; color:#666; margin-bottom:15px;">会員ID: <span style="font-family:monospace; font-weight:bold;">${scannedMemberId}</span></p>
               
               <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px;">
-                <p style="font-weight:bold; margin-bottom:10px;">来店人数を入力してください</p>
+                <p style="font-weight:bold; margin-bottom:10px;">当日の来店人数を入力</p>
                 <input type="number" id="qrHeadCount" value="1" min="1" inputmode="numeric" style="width:100px; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:10px;">
-                <p style="font-size:1.1em; font-weight:bold;">予定料金: <strong id="qrEstAmount" style="color:#E60012; font-size:1.3em;">${calcAmount(1).toLocaleString()}</strong> 円</p>
+                <p style="font-size:0.9em; color:#666;">（予定料金: <strong id="qrEstAmount" style="color:#E60012;">${calcAmount(1).toLocaleString()}</strong> 円）</p>
+                <p style="font-size:0.8em; color:#666; margin-top:5px;">※事前予約がある場合は、その予約時の料金が優先されます</p>
               </div>
             </div>
           `, `
@@ -1076,19 +1086,24 @@ function attachQRScannerUI_(){
             </div>
           `);
 
-          // 人数変更に連動して料金を再計算
           document.getElementById('qrHeadCount').addEventListener('input', (e) => {
             const h = Number(e.target.value) || 0;
             document.getElementById('qrEstAmount').textContent = calcAmount(h).toLocaleString();
           });
 
-          // INボタン押下で初めてバックエンドに送信
           document.getElementById('qrInBtn').addEventListener('click', async () => {
             const head = Number(document.getElementById('qrHeadCount').value) || 0;
             closeModal();
             try {
               showOverlay('来店受付中...');
-              const res = await api_('admin_scan_qr', { member_id: decodedText, head_count: head, date: todayStr });
+              
+              // ★ APIに reservation_id を追加で送信する
+              const res = await api_('admin_scan_qr', { 
+                  member_id: scannedMemberId, 
+                  reservation_id: scannedResId,
+                  head_count: head, 
+                  date: todayStr 
+              });
               
               let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
               if (res.checked_in_count > 0) {
@@ -1149,7 +1164,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   wireActions_(); 
   
   try {
-    // ★ P1: 画面起動時にまずマジックリンク認証とトークン検証を行う
     await initAuth_();
     
     const today = new Date();
