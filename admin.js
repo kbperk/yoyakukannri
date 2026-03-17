@@ -1056,124 +1056,142 @@ function attachQRScannerUI_(){
           const scannedMemberId = parts[0].trim();
           const scannedResId = parts.length > 1 ? parts[1].trim() : null;
 
-          let targetRes = null;
-          if (scannedResId && _lastData && _lastData.summary && _lastData.summary.reservations) {
-            targetRes = _lastData.summary.reservations.find(r => r.id === scannedResId || r.reservation_id === scannedResId);
-          }
+          const todayStr = _currentDateStr || (new Date().toISOString().slice(0,10));
 
-          let resInfoHtml = '';
-          let inputHtml = '';
-          let initialHead = 1;
+          try {
+            showOverlay('データ照会中...');
+            // ★ バックエンドにユーザーと予約情報を問い合わせ
+            const qrData = await api_('adminCheckQr', {
+              member_id: scannedMemberId,
+              reservation_id: scannedResId,
+              date: todayStr
+            });
+            hideOverlay();
 
-          const settings = _lastData ? _lastData.settings : {};
-          const d = new Date();
-          const todayStr = _currentDateStr || (d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2));
+            const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
+            const targetRes = qrData.reservation;
+            const settings = qrData.settings || {};
+            
+            // 決定した予約ID（飛び込みの場合はnull）
+            const finalResId = targetRes ? targetRes.id : null;
 
-          const calcAmount = (head) => {
-            if (!settings || String(settings.pricingEnabled).toLowerCase() !== 'true') return 0;
-            const dt = new Date(todayStr);
-            const dow = dt.getDay();
-            const isWeekend = (dow === 0 || dow === 6);
-            const unit = isWeekend ? Number(settings.priceWeekend||0) : Number(settings.priceWeekday||0);
-            let amt = head * unit;
-            const cDisc = Number(settings.campaign_discount||0);
-            if (cDisc > 0 && settings.campaign_start && settings.campaign_end && todayStr >= settings.campaign_start && todayStr <= settings.campaign_end) {
-              amt = Math.max(0, amt - (cDisc * head));
-            }
-            return amt;
-          };
+            let resInfoHtml = '';
+            let inputHtml = '';
+            let initialHead = 1;
 
-          if (targetRes) {
-            // 予約あり：日時・人数・金額をハッキリ表示
-            const dateFmt = targetRes.date || todayStr;
-            const timeFmt = targetRes.time || '--:--';
-            const headFmt = targetRes.head_count || 0;
-            const amtFmt = Number(targetRes.amount || 0).toLocaleString();
-            initialHead = headFmt;
-
-            resInfoHtml = `
-              <p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>
-              <div style="background:#E6F4EA; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left; border: 1px solid #10B981;">
-                <p style="margin-bottom:4px;"><strong>予約日時:</strong> ${dateFmt} ${timeFmt}</p>
-                <p style="margin-bottom:4px;"><strong>予約人数:</strong> ${headFmt} 名</p>
-                <p style="margin-bottom:0;"><strong>お支払金額:</strong> <span style="color:#E60012; font-weight:bold; font-size:1.2em;">${amtFmt} 円</span></p>
-              </div>
-            `;
-            inputHtml = `
-              <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px;">
-                <p style="font-weight:bold; margin-bottom:10px;">実際の来店人数を確認・入力</p>
-                <input type="number" id="qrHeadCount" value="${headFmt}" min="1" inputmode="numeric" style="width:100px; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:5px;">
-                <p style="font-size:0.8em; color:#666;">※人数を変更して確定した場合、料金は自動で再計算されます</p>
-              </div>
-            `;
-          } else {
-            // 予約なし（飛び込み）
-            resInfoHtml = `<p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>`;
-            inputHtml = `
-              <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px;">
-                <p style="font-weight:bold; margin-bottom:10px;">当日の来店人数を入力</p>
-                <input type="number" id="qrHeadCount" value="1" min="1" inputmode="numeric" style="width:100px; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:10px;">
-                <p style="font-size:0.9em; color:#666;">（予定料金: <strong id="qrEstAmount" style="color:#E60012;">${calcAmount(1).toLocaleString()}</strong> 円）</p>
-                <p style="font-size:0.8em; color:#666; margin-top:5px;">※事前予約がある場合は、その予約時の料金が優先されます</p>
-              </div>
-            `;
-          }
-
-          openModal('スキャン成功', `
-            <div style="text-align:center; padding:10px;">
-              <p style="font-weight:bold; color:#2563EB; font-size:1.1em; margin-bottom:10px;">本日の日付: ${todayStr}</p>
-              ${resInfoHtml}
-              <p style="font-size:0.9em; color:#666; margin-bottom:15px;">会員ID: <span style="font-family:monospace; font-weight:bold;">${scannedMemberId}</span></p>
-              ${inputHtml}
-            </div>
-          `, `
-            <div style="display:flex; gap:10px; width:100%;">
-              <button class="btn-outline press" style="flex:1;" onclick="closeModal()">キャンセル</button>
-              <button class="btn press" id="qrInBtn" style="flex:1; background:#10B981; color:#fff; border:none;">IN (確定)</button>
-            </div>
-          `);
-
-          document.getElementById('qrHeadCount').addEventListener('input', (e) => {
-            const h = Number(e.target.value) || 0;
-            const amtEl = document.getElementById('qrEstAmount');
-            if (amtEl) {
-               amtEl.textContent = calcAmount(h).toLocaleString();
-            }
-          });
-
-          document.getElementById('qrInBtn').addEventListener('click', async () => {
-            const head = Number(document.getElementById('qrHeadCount').value) || 0;
-            closeModal();
-            try {
-              showOverlay('来店受付中...');
-              
-              const res = await api_('admin_scan_qr', { 
-                  member_id: scannedMemberId, 
-                  reservation_id: scannedResId,
-                  head_count: head, 
-                  date: todayStr 
-              });
-              
-              let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
-              if (res.checked_in_count > 0) {
-                msg += `<br><br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${Number(res.amount||0).toLocaleString()}円</strong>`;
-              } else {
-                msg += `<br><span style="color:#d32f2f;">※予約の処理に失敗しました。</span>`;
+            const calcAmount = (head) => {
+              if (!settings || String(settings.pricingEnabled).toLowerCase() !== 'true') return 0;
+              const dt = new Date(todayStr);
+              const dow = dt.getDay();
+              const isWeekend = (dow === 0 || dow === 6);
+              const unit = isWeekend ? Number(settings.priceWeekend||0) : Number(settings.priceWeekday||0);
+              let amt = head * unit;
+              const cDisc = Number(settings.campaign_discount||0);
+              if (cDisc > 0 && settings.campaign_start && settings.campaign_end && todayStr >= settings.campaign_start && todayStr <= settings.campaign_end) {
+                amt = Math.max(0, amt - (cDisc * head));
               }
-              
-              openModal(
-                '受付完了', 
-                `<div style="text-align:center; padding: 10px; font-size: 1.1em; line-height: 1.5;">${msg}</div>`, 
-                '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
-              );
-              await loadAndRender_();
-            } catch(e) {
-              showBanner('エラー: ' + (e.message || String(e)));
-              setTimeout(hideBanner, 5000);
-            } finally {
-              hideOverlay();
+              return amt;
+            };
+
+            if (targetRes && targetRes.status === 'reserved') {
+              // 予約あり
+              const timeFmt = targetRes.slot_id ? targetRes.slot_id.slice(11,16) : '--:--';
+              const headFmt = targetRes.head_count || 0;
+              const amtFmt = Number(targetRes.amount || 0).toLocaleString();
+              initialHead = headFmt;
+
+              resInfoHtml = `
+                <p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>
+                <div style="background:#E6F4EA; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left; border: 1px solid #10B981;">
+                  <p style="margin-bottom:4px;"><strong>お名前:</strong> ${memberName} 様</p>
+                  <p style="margin-bottom:4px;"><strong>予約日時:</strong> ${todayStr} ${timeFmt}</p>
+                  <p style="margin-bottom:4px;"><strong>予約人数:</strong> ${headFmt} 名</p>
+                  <p style="margin-bottom:0;"><strong>お支払金額:</strong> <span style="color:#E60012; font-weight:bold; font-size:1.2em;">${amtFmt} 円</span></p>
+                </div>
+              `;
+              inputHtml = `
+                <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px;">
+                  <p style="font-weight:bold; margin-bottom:10px;">実際の来店人数を確認・入力</p>
+                  <input type="number" id="qrHeadCount" value="${headFmt}" min="1" inputmode="numeric" style="width:100px; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:5px;">
+                  <p style="font-size:0.8em; color:#666;">※人数を変更して確定した場合、料金は自動で再計算されます</p>
+                </div>
+              `;
+            } else {
+              // 予約なし（飛び込み）、または既に処理済み
+              resInfoHtml = `
+                <p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>
+                <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${memberName} 様</p>
+              `;
+              inputHtml = `
+                <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px;">
+                  <p style="font-weight:bold; margin-bottom:10px;">当日の来店人数を入力</p>
+                  <input type="number" id="qrHeadCount" value="1" min="1" inputmode="numeric" style="width:100px; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:10px;">
+                  <p style="font-size:0.9em; color:#666;">（予定料金: <strong id="qrEstAmount" style="color:#E60012;">${calcAmount(1).toLocaleString()}</strong> 円）</p>
+                </div>
+              `;
             }
-          });
+
+            openModal('スキャン成功', `
+              <div style="text-align:center; padding:10px;">
+                <p style="font-weight:bold; color:#2563EB; font-size:1.1em; margin-bottom:10px;">本日の日付: ${todayStr}</p>
+                ${resInfoHtml}
+                <p style="font-size:0.9em; color:#666; margin-bottom:15px;">会員ID: <span style="font-family:monospace; font-weight:bold;">${scannedMemberId}</span></p>
+                ${inputHtml}
+              </div>
+            `, `
+              <div style="display:flex; gap:10px; width:100%;">
+                <button class="btn-outline press" style="flex:1;" onclick="closeModal()">キャンセル</button>
+                <button class="btn press" id="qrInBtn" style="flex:1; background:#10B981; color:#fff; border:none;">IN (確定)</button>
+              </div>
+            `);
+
+            document.getElementById('qrHeadCount').addEventListener('input', (e) => {
+              const h = Number(e.target.value) || 0;
+              const amtEl = document.getElementById('qrEstAmount');
+              if (amtEl) {
+                 amtEl.textContent = calcAmount(h).toLocaleString();
+              }
+            });
+
+            document.getElementById('qrInBtn').addEventListener('click', async () => {
+              const head = Number(document.getElementById('qrHeadCount').value) || 0;
+              closeModal();
+              try {
+                showOverlay('来店受付中...');
+                
+                // ★ API呼び出し名を見直し（_ を除外して adminScanQr とする）
+                const res = await api_('adminScanQr', { 
+                    member_id: scannedMemberId, 
+                    reservation_id: finalResId, // 照会で特定した予約IDを使用
+                    head_count: head, 
+                    date: todayStr 
+                });
+                
+                let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
+                if (res.checked_in_count > 0) {
+                  msg += `<br><br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${Number(res.amount||0).toLocaleString()}円</strong>`;
+                } else {
+                  msg += `<br><span style="color:#d32f2f;">※予約の処理に失敗しました。</span>`;
+                }
+                
+                openModal(
+                  '受付完了', 
+                  `<div style="text-align:center; padding: 10px; font-size: 1.1em; line-height: 1.5;">${msg}</div>`, 
+                  '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+                );
+                await loadAndRender_();
+              } catch(e) {
+                showBanner('エラー: ' + (e.message || String(e)));
+                setTimeout(hideBanner, 5000);
+              } finally {
+                hideOverlay();
+              }
+            });
+
+          } catch(err) {
+            hideOverlay();
+            alert('データ照会エラー: ' + (err.message || String(err)));
+          }
 
         });
       }, (err) => {
