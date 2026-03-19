@@ -523,7 +523,10 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
 
   let isReserved = (targetRes && targetRes.status === 'reserved');
   let initialHead = isReserved ? (targetRes.head_count || 0) : 1;
-  let initialAmount = isReserved ? (targetRes.amount || 0) : todayUnitPrice;
+  
+  // ブラウザによる入力値保持（キャッシュ）を防ぐため、HTML上のvalue属性は一時的な0にしておき、
+  // 表示直後にJavaScriptから人数ベースの強制再計算を走らせます。
+  let initialAmount = 0; 
 
   const resInfoHtml = isReserved ? `
       <p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>
@@ -595,6 +598,9 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
 
   document.getElementById('qrPlanSelect').addEventListener('change', recalc);
   document.getElementById('qrHeadCount').addEventListener('input', recalc);
+
+  // ★ ブラウザのキャッシュ（前回の入力値保持）を防ぎ、人数ベースの正しい初期値をセットするため、表示直後に再計算を強制
+  recalc();
 
   document.getElementById('qrInBtn').addEventListener('click', async () => {
       const finalHead = Number(document.getElementById('qrHeadCount').value) || 1;
