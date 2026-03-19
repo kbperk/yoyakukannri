@@ -519,6 +519,7 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   const targetRes = qrData.reservation;
   const settings = qrData.settings || {};
   const duplicateWarning = qrData.duplicate_warning === true;
+  const unconsumedReservation = qrData.unconsumed_reservation || null;
   
   const todayUnitPrice = Number(qrData.today_unit_price || 0);
 
@@ -531,12 +532,22 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
       <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${escapeHtml_(memberName)} 様</p>
   `;
 
+  // ★ 賢いチェック：未消化予約の警告をモーダル内に表示
+  if (unconsumedReservation) {
+      walkInHtml += `
+      <div style="background:#FFFBEB; border:2px solid #F59E0B; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
+        <p style="color:#D97706; font-weight:bold; margin-bottom:5px;">⚠️ 事前予約あり（未消化）</p>
+        <p style="font-size:0.9em; font-weight:bold; line-height: 1.4;">このお客様は本日（${escapeHtml_(unconsumedReservation.time)} / ${unconsumedReservation.head}名）に予約が入っています。<br>予約を消化せず、別の「飛び込み」として受付しますか？</p>
+      </div>
+      `;
+  }
+
   // ★ 賢いチェック：重複の警告（ソフトブロック）をモーダル内に表示
   if (duplicateWarning) {
       walkInHtml += `
       <div style="background:#FEF2F2; border:2px solid #EF4444; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
         <p style="color:#EF4444; font-weight:bold; margin-bottom:5px;">⚠️ 重複の警告</p>
-        <p style="font-size:0.9em; font-weight:bold;">本日すでに1回受付済みの履歴があります。<br>2回目の別利用として受付しますか？</p>
+        <p style="font-size:0.9em; font-weight:bold; line-height: 1.4;">本日すでに1回受付済みの履歴があります。<br>2回目の別利用として受付しますか？</p>
       </div>
       `;
   }
