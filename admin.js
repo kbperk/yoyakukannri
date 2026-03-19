@@ -508,7 +508,7 @@ function renderRemain_(slots){
   qs('admTimes').innerHTML = html;
 }
 
-// ★ 手動の「IN」「来ず」ボタンを確実に動作させるための修正
+// ★ 手動の「IN」「来ず」ボタン機能
 function renderList_(reservations){
   const root = qs('admList');
   root.innerHTML = '';
@@ -551,23 +551,32 @@ function renderList_(reservations){
     const editBtn = row.querySelector('.btn-edit');
     const detailBtn = row.querySelector('.btn-detail'); 
 
-    // ★ INボタン処理：通信中画面を表示して確実にバックエンドへ渡す
+    // ★ INボタン処理：通信中画面を表示し、初回なら警告モーダルを出す
     inBtn.addEventListener('click', async ()=>{
       try{
         showOverlay('来店受付中...');
-        await api_('adminUpdateStatus', { data:{ id:r.id, status:'paid_on_site', date:_currentDateStr, member_id: r.member_id } });
+        const res = await api_('adminUpdateStatus', { data:{ id:r.id, status:'paid_on_site', date:_currentDateStr, member_id: r.member_id } });
         await loadAndRender_();
-        showBanner('✅ 来店受付 (IN) しました', true);
-        setTimeout(hideBanner, 3000);
+        hideOverlay();
+
+        if (res && res.visit_count === 1) {
+            openModal(
+                '受付完了 (初回)',
+                '<div style="text-align:center; padding: 20px;"><p style="color:#E60012; font-weight:bold; font-size:1.3em; margin-bottom:10px;">⚠️ 初回利用です！</p><p style="font-size:1.1em;">施設利用料に加えて、<br><strong style="font-size:1.2em; color:#E60012;">初回登録料 800円</strong><br>を合算してご請求ください。</p></div>',
+                '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">確認した</button></div>'
+            );
+        } else {
+            showBanner('✅ 来店受付 (IN) しました', true);
+            setTimeout(hideBanner, 3000);
+        }
       }catch(e){
+        hideOverlay();
         showBanner(e.message||String(e));
         setTimeout(hideBanner, 4000);
-      }finally{
-        hideOverlay();
       }
     });
     
-    // ★ 来ずボタン処理：通信中画面を表示して無断キャンセルとして処理
+    // 来ずボタン処理：通信中画面を表示して無断キャンセルとして処理
     nsBtn.addEventListener('click', async ()=>{
       try{
         showOverlay('キャンセル処理中...');
@@ -982,7 +991,7 @@ function attachPricingUI_(){
   document.body.appendChild(btn); 
 }
 
-// ★ カンマ区切りのQRデータを解析し、モーダルに詳細情報を表示するよう修正
+// ★ バックエンド統合済みのQR処理（計算はバックエンド結果に依存）
 function attachQRScannerUI_(){
   const script = document.createElement('script');
   script.src = 'https://unpkg.com/html5-qrcode';
@@ -1060,7 +1069,7 @@ function attachQRScannerUI_(){
 
           try {
             showOverlay('データ照会中...');
-            // ★ バックエンドにユーザーと予約情報を問い合わせ（既存の adminUpdateStatus を利用してエラーを回避）
+            // ★ バックエンドにユーザーと予約情報を問い合わせ
             const qrData = await api_('adminUpdateStatus', {
               data: {
                 update_type: 'qr_check',
@@ -1081,18 +1090,11 @@ function attachQRScannerUI_(){
             let resInfoHtml = '';
             let inputHtml = '';
 
+            // ★ バックエンドから渡された正確な単価を使用
+            const todayUnitPrice = Number(qrData.today_unit_price || 0);
             const calcAmount = (head) => {
               if (!settings || String(settings.pricingEnabled).toLowerCase() !== 'true') return 0;
-              const dt = new Date(todayStr);
-              const dow = dt.getDay();
-              const isWeekend = (dow === 0 || dow === 6);
-              const unit = isWeekend ? Number(settings.priceWeekend||0) : Number(settings.priceWeekday||0);
-              let amt = head * unit;
-              const cDisc = Number(settings.campaign_discount||0);
-              if (cDisc > 0 && settings.campaign_start && settings.campaign_end && todayStr >= settings.campaign_start && todayStr <= settings.campaign_end) {
-                amt = Math.max(0, amt - (cDisc * head));
-              }
-              return amt;
+              return head * todayUnitPrice;
             };
 
             if (targetRes && targetRes.status === 'reserved') {
@@ -1118,7 +1120,7 @@ function attachQRScannerUI_(){
                 </div>
               `;
             } else {
-              // 予約なし（飛び込み）、または既に処理済み
+              // 予約なし（飛び込み）
               resInfoHtml = `
                 <p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>
                 <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${memberName} 様</p>
@@ -1160,7 +1162,7 @@ function attachQRScannerUI_(){
               try {
                 showOverlay('来店受付中...');
                 
-                // ★ 確定時も adminUpdateStatus を利用
+                // ★ 確定時の呼び出し
                 const res = await api_('adminUpdateStatus', { 
                   data: {
                     update_type: 'qr_commit',
@@ -1174,6 +1176,14 @@ function attachQRScannerUI_(){
                 let msg = `${res.member_name} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
                 if (res.checked_in_count > 0) {
                   msg += `<br><br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${Number(res.amount||0).toLocaleString()}円</strong>`;
+
+                  // ★ 初回ユーザー判定
+                  if (res.new_count === 1) {
+                      msg += `<br><br><div style="background:#FFF0F0; border:2px solid #E60012; padding:10px; border-radius:8px;">
+                                <p style="color:#E60012; font-weight:bold; margin-bottom:5px;">⚠️ 初回利用です！</p>
+                                <p style="font-size:0.9em; font-weight:bold;">上記の施設利用料に加えて、<br><strong>初回登録料 800円</strong> を<br>合算してご請求ください。</p>
+                              </div>`;
+                  }
                 } else {
                   msg += `<br><span style="color:#d32f2f;">※予約の処理に失敗しました。</span>`;
                 }
