@@ -312,8 +312,11 @@ async function showMonth_(year, month){
 
   }catch(e){
     hideOverlay();
-    showBanner(e && e.message ? e.message : String(e));
-    setTimeout(hideBanner, 4000);
+    openModal(
+      '⚠️ エラー',
+      `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+      `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+    );
   }
 }
 
@@ -509,14 +512,13 @@ function renderRemain_(slots){
 }
 
 // =======================================================
-// ★ 追加機能：汎用的なIN（来店受付）モーダルの構築ロジック
+// ★ 汎用的なIN（来店受付）モーダルの構築ロジック
 // =======================================================
 function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr) {
   const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
   const targetRes = qrData.reservation;
   const settings = qrData.settings || {};
   
-  // バックエンドから取得した本日の正確な追加1名分の単価
   const todayUnitPrice = Number(qrData.today_unit_price || 0);
 
   let isReserved = (targetRes && targetRes.status === 'reserved');
@@ -570,7 +572,6 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
     </div>
   `);
 
-  // プランと人数に応じた自動計算ロジック
   const recalc = () => {
       const plan = document.getElementById('qrPlanSelect').value;
       const head = Number(document.getElementById('qrHeadCount').value) || 1;
@@ -583,10 +584,8 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
 
       let calcAmount = 0;
       if (plan === 'normal') {
-          // 通常プランは単純に人数 × 単価
           calcAmount = head * todayUnitPrice;
       } else {
-          // 割引プランは「ベース料金」＋「はみ出た人数 × 単価」
           let excessHead = Math.max(0, head - baseHead);
           calcAmount = basePrice + (excessHead * todayUnitPrice);
       }
@@ -594,11 +593,9 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
       document.getElementById('qrFinalAmount').value = calcAmount;
   };
 
-  // プランや人数を変えた時だけ自動計算（スタッフが手動で最終金額をいじった時は何もしない）
   document.getElementById('qrPlanSelect').addEventListener('change', recalc);
   document.getElementById('qrHeadCount').addEventListener('input', recalc);
 
-  // 確定ボタン押下処理
   document.getElementById('qrInBtn').addEventListener('click', async () => {
       const finalHead = Number(document.getElementById('qrHeadCount').value) || 1;
       const finalAmount = Number(document.getElementById('qrFinalAmount').value) || 0;
@@ -638,15 +635,17 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
         );
         await loadAndRender_();
       } catch(e) {
-        showBanner('エラー: ' + (e.message || String(e)));
-        setTimeout(hideBanner, 5000);
-      } finally {
         hideOverlay();
+        openModal(
+          '⚠️ エラー',
+          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+        );
       }
   });
 }
 
-// ★ 手動の「IN」「来ず」ボタン機能を含むリスト描画
+// ★ 手動の「IN」「来ず」ボタン機能（「変更」ボタンは削除）
 function renderList_(reservations){
   const root = qs('admList');
   root.innerHTML = '';
@@ -678,7 +677,6 @@ function renderList_(reservations){
         <div class="ops" style="display:flex; gap:6px; width:100%; flex-wrap:wrap;">
           <button class="btn-inline btn-in press" style="flex:1; padding:10px 4px; font-size:1em;">IN</button>
           <button class="btn-inline btn-noshow press" style="flex:1; padding:10px 4px; font-size:1em;">来ず</button>
-          <button class="btn-inline btn-edit press" style="flex:1; padding:10px 4px; font-size:1em; background:#EAB308; color:#fff; border:none; border-radius:8px;">変更</button>
           <button class="btn-inline btn-detail press" style="flex:1; padding:10px 4px; font-size:1em; background:#6B7280; color:#fff; border:none; border-radius:8px;">詳細</button>
         </div>
       </div>
@@ -686,10 +684,8 @@ function renderList_(reservations){
 
     const inBtn = row.querySelector('.btn-in');
     const nsBtn = row.querySelector('.btn-noshow');
-    const editBtn = row.querySelector('.btn-edit');
     const detailBtn = row.querySelector('.btn-detail'); 
 
-    // ★ 手動INボタン処理：QRと同じAPIでデータを取得し、共通モーダルを開く
     inBtn.addEventListener('click', async ()=>{
       try {
         showOverlay('データ照会中...');
@@ -700,12 +696,14 @@ function renderList_(reservations){
         buildAndShowCheckInModal(qrData, r.member_id, r.id, _currentDateStr);
       } catch(e) {
         hideOverlay();
-        showBanner(e.message||String(e));
-        setTimeout(hideBanner, 4000);
+        openModal(
+          '⚠️ エラー',
+          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+        );
       }
     });
     
-    // 来ずボタン処理：通信中画面を表示して無断キャンセルとして処理
     nsBtn.addEventListener('click', async ()=>{
       try{
         showOverlay('キャンセル処理中...');
@@ -714,68 +712,13 @@ function renderList_(reservations){
         showBanner('⚠️ 無断キャンセルとして処理しました', true);
         setTimeout(hideBanner, 3000);
       }catch(e){
-        showBanner(e.message||String(e));
-        setTimeout(hideBanner, 4000);
-      }finally{
         hideOverlay();
+        openModal(
+          '⚠️ エラー',
+          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+        );
       }
-    });
-
-    editBtn.addEventListener('click', () => {
-      openModal('人数変更', `
-        <div style="text-align:center; padding: 10px;">
-          <p style="margin-bottom:15px; font-weight:bold; font-size:1em;">合計何名へ変更しますか？</p>
-          <input type="tel" id="editHeadCount" inputmode="numeric" value="${r.head_count||0}" style="width:100%; max-width:200px; font-size:1.5em; text-align:center; padding:10px; border:2px solid #ccc; border-radius:8px; outline:none;" autofocus>
-        </div>
-      `, `
-        <div style="display:flex; gap:10px; width:100%;">
-          <button class="btn-outline press" style="flex:1; font-size:1em;" onclick="closeModal()">キャンセル</button>
-          <button class="btn press" style="flex:1; background:#2563EB; color:#fff; font-size:1em; border:none;" id="doEditHeadCount">更新</button>
-        </div>
-      `);
-      
-      setTimeout(() => {
-        const input = document.getElementById('editHeadCount');
-        if(input) {
-          input.focus();
-          const val = input.value;
-          input.value = '';
-          input.value = val;
-        }
-      }, 100);
-
-      document.getElementById('doEditHeadCount').addEventListener('click', async () => {
-        const newHead = Number(document.getElementById('editHeadCount').value);
-        if (isNaN(newHead) || newHead < 1) {
-          alert('正しい人数（1名以上）を入力してください');
-          return;
-        }
-        closeModal();
-        try {
-          showOverlay('更新中...');
-          await api_('adminUpdateStatus', { 
-            data: { 
-              id: r.id, 
-              date: _currentDateStr,
-              update_type: 'head_count',
-              head_count: newHead
-            } 
-          });
-          await loadAndRender_(); 
-          
-          openModal(
-            '完了', 
-            '<div style="text-align:center; padding: 20px; font-size: 1.2em; font-weight: bold; color: #10B981;">✨ 人数を変更しました</div>', 
-            '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
-          );
-
-        } catch(e) {
-          showBanner(e.message || String(e));
-          setTimeout(hideBanner, 4000);
-        } finally {
-          hideOverlay();
-        }
-      });
     });
 
     detailBtn.addEventListener('click', () => {
@@ -937,8 +880,11 @@ function wireActions_(){
 
     }catch(e){
       hideOverlay();
-      showBanner(e.message||String(e));
-      setTimeout(hideBanner, 4000);
+      openModal(
+        '⚠️ エラー',
+        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+      );
     }
   });
 
@@ -956,8 +902,11 @@ function wireActions_(){
           showBanner('✨ 緊急閉鎖しました', true);
           setTimeout(hideBanner, 4000);
         }catch(e){
-          showBanner(e.message||String(e));
-          setTimeout(hideBanner, 4000);
+          openModal(
+            '⚠️ エラー',
+            `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+            `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+          );
         }
       };
     },0);
@@ -982,8 +931,11 @@ function wireActions_(){
       setTimeout(hideBanner, 4000);
     }catch(e){
       hideOverlay();
-      showBanner(e.message||String(e));
-      setTimeout(hideBanner, 4000);
+      openModal(
+        '⚠️ エラー',
+        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+      );
     }
   });
 
@@ -1019,8 +971,11 @@ function wireActions_(){
 
     }catch(e){
       hideOverlay();
-      showBanner(e.message||String(e));
-      setTimeout(hideBanner, 4000);
+      openModal(
+        '⚠️ エラー',
+        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
+        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+      );
     }
   });
 
@@ -1042,9 +997,8 @@ function wireActions_(){
 
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">👤 予約の受付・人数変更</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>IN</b>: 来店時に押します（チェックイン完了）。</li>
+            <li style="margin-bottom:5px;"><b>IN</b>: 来店時に押します（人数の調整もここで行えます）。</li>
             <li style="margin-bottom:5px;"><b>来ず</b>: 無断キャンセル時に押すと「未回収対象」に自動登録されます。</li>
-            <li style="margin-bottom:5px;"><b>変更</b>: 当日の急な人数増減時に使用します。料金も自動再計算されます。</li>
             <li style="margin-bottom:5px;"><b>詳細</b>: お客様の住所や累計来店回数などを確認できます。</li>
           </ul>
 
@@ -1107,12 +1061,24 @@ function attachPricingUI_(){
       };
       const r = await api_('admin_pricing_set', payload, { timeoutMs:15000 });
       if(r && r.ok){
-        alert('料金設定を保存しました');
+        openModal(
+          '完了',
+          `<div style="text-align:center; padding:20px; color:#10B981; font-weight:bold; font-size:1.1em;">料金設定を保存しました</div>`,
+          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">OK</button></div>`
+        );
       }else{
-        alert('保存に失敗しました: ' + (r && r.error ? r.error : 'unknown'));
+        openModal(
+          '⚠️ エラー',
+          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold;">保存に失敗しました<br>${escapeHtml_(r && r.error ? r.error : 'unknown')}</div>`,
+          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+        );
       }
     }catch(err){
-      alert('料金設定エラー: ' + (err && err.message ? err.message : err));
+      openModal(
+        '⚠️ エラー',
+        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; line-height:1.6; white-space:pre-wrap;">料金設定エラー:\n${escapeHtml_(err.message || String(err))}</div>`,
+        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+      );
     }
   }
 
@@ -1120,7 +1086,6 @@ function attachPricingUI_(){
   document.body.appendChild(btn); 
 }
 
-// ★ バックエンド統合済みのQRカメラ処理
 function attachQRScannerUI_(){
   const script = document.createElement('script');
   script.src = 'https://unpkg.com/html5-qrcode';
@@ -1210,13 +1175,21 @@ function attachQRScannerUI_(){
             buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr);
           } catch(err) {
             hideOverlay();
-            alert('データ照会エラー: ' + (err.message || String(err)));
+            openModal(
+              '⚠️ エラー',
+              `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(err.message || String(err))}</div>`,
+              `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
+            );
           }
 
         });
       }, (err) => {
       }).catch(err => {
-        alert('カメラの起動に失敗しました。スマホの設定でカメラへのアクセスを許可してください。');
+        openModal(
+          'カメラエラー',
+          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold;">カメラの起動に失敗しました。<br>スマホの設定でカメラへのアクセスを許可してください。</div>`,
+          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">閉じる</button></div>`
+        );
         overlay.style.display = 'none';
       });
     });
@@ -1249,6 +1222,17 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   attachPricingUI_();
   attachQRScannerUI_();
   wireActions_(); 
+
+  // ★ モーダルがQRボタンと被らないよう、高さを制限して下部に余白を持たせる
+  const customStyle = document.createElement('style');
+  customStyle.innerHTML = `
+    #modal .modal-card {
+      max-height: calc(100dvh - 120px) !important;
+      margin-bottom: 80px !important;
+      overflow-y: auto !important;
+    }
+  `;
+  document.head.appendChild(customStyle);
   
   try {
     await initAuth_();
