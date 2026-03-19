@@ -518,15 +518,28 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
   const targetRes = qrData.reservation;
   const settings = qrData.settings || {};
+  const duplicateWarning = qrData.duplicate_warning === true;
   
   const todayUnitPrice = Number(qrData.today_unit_price || 0);
 
   let isReserved = (targetRes && targetRes.status === 'reserved');
   let initialHead = isReserved ? (targetRes.head_count || 0) : 1;
-  
-  // ブラウザによる入力値保持（キャッシュ）を防ぐため、HTML上のvalue属性は一時的な0にしておき、
-  // 表示直後にJavaScriptから人数ベースの強制再計算を走らせます。
   let initialAmount = 0; 
+
+  let walkInHtml = `
+      <p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>
+      <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${escapeHtml_(memberName)} 様</p>
+  `;
+
+  // ★ 賢いチェック：重複の警告（ソフトブロック）をモーダル内に表示
+  if (duplicateWarning) {
+      walkInHtml += `
+      <div style="background:#FEF2F2; border:2px solid #EF4444; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
+        <p style="color:#EF4444; font-weight:bold; margin-bottom:5px;">⚠️ 重複の警告</p>
+        <p style="font-size:0.9em; font-weight:bold;">本日すでに1回受付済みの履歴があります。<br>2回目の別利用として受付しますか？</p>
+      </div>
+      `;
+  }
 
   const resInfoHtml = isReserved ? `
       <p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>
@@ -535,10 +548,7 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
         <p style="margin-bottom:4px;"><strong>予約日時:</strong> ${escapeHtml_(todayStr)} ${escapeHtml_(targetRes.slot_id.slice(11,16))}</p>
         <p style="margin-bottom:0;"><strong>予約人数:</strong> ${initialHead} 名</p>
       </div>
-  ` : `
-      <p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>
-      <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${escapeHtml_(memberName)} 様</p>
-  `;
+  ` : walkInHtml;
 
   const inputHtml = `
       <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px; text-align:left;">
@@ -599,7 +609,6 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   document.getElementById('qrPlanSelect').addEventListener('change', recalc);
   document.getElementById('qrHeadCount').addEventListener('input', recalc);
 
-  // ★ ブラウザのキャッシュ（前回の入力値保持）を防ぎ、人数ベースの正しい初期値をセットするため、表示直後に再計算を強制
   recalc();
 
   document.getElementById('qrInBtn').addEventListener('click', async () => {
@@ -651,7 +660,6 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   });
 }
 
-// ★ 手動の「IN」「来ず」ボタン機能（「変更」ボタンは削除）
 function renderList_(reservations){
   const root = qs('admList');
   root.innerHTML = '';
@@ -1229,7 +1237,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   attachQRScannerUI_();
   wireActions_(); 
 
-  // ★ モーダルがQRボタンと被らないよう、高さを制限して下部に余白を持たせる
   const customStyle = document.createElement('style');
   customStyle.innerHTML = `
     #modal .modal-card {
