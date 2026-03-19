@@ -515,7 +515,8 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
   const targetRes = qrData.reservation;
   const settings = qrData.settings || {};
-  // バックエンドから取得した本日の正確な追加1名分の単価（スプレッドシート設定値）
+  
+  // バックエンドから取得した本日の正確な追加1名分の単価
   const todayUnitPrice = Number(qrData.today_unit_price || 0);
 
   let isReserved = (targetRes && targetRes.status === 'reserved');
