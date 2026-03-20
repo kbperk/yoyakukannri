@@ -893,20 +893,26 @@ function wireActions_(){
     }
   });
 
+  // ★ 変更箇所：強制閉鎖（緊急閉鎖）ボタンのモーダルと挙動を修正
   qs('admForce').addEventListener('click', ()=>{
-    openModal('緊急閉鎖', `<div>選択中の日付（${fmtJP(_currentDateStr)}）を緊急閉鎖します。よろしいですか？</div>`,
-      `<button class="btn-outline press" id="__fcCancel">キャンセル</button>
-       <button class="btn-warn press" id="__fcOk">緊急閉鎖する</button>`);
+    openModal('本当に強制閉鎖を行いますか？', `<div style="text-align:center; font-weight:bold; font-size:1.1em; padding:10px 0;">選択中の日付（${fmtJP(_currentDateStr)}）を強制閉鎖します。よろしいですか？</div>`,
+      `<div style="width:100%; display:flex; gap:10px;">
+         <button class="btn-outline press" id="__fcCancel" style="flex:1;">いいえ</button>
+         <button class="btn-warn press" id="__fcOk" style="flex:1; background:#EF4444; color:#fff; border:none;">はい</button>
+       </div>`);
     setTimeout(()=>{
       qs('__fcCancel').onclick = closeModal;
       qs('__fcOk').onclick = async ()=>{
         try{
           closeModal();
+          showOverlay('強制閉鎖を実行中...');
           await api_('adminForceClose', { date:_currentDateStr });
           await loadAndRender_();
-          showBanner('✨ 緊急閉鎖しました', true);
+          hideOverlay();
+          showBanner('✨ 強制閉鎖しました', true);
           setTimeout(hideBanner, 4000);
         }catch(e){
+          hideOverlay();
           openModal(
             '⚠️ エラー',
             `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
