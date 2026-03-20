@@ -11,7 +11,6 @@ let _currentDateStr = '';
 let _lastData = null;
 
 // ----------------- POST通信（Google複数アカウント問題 回避版） -----------------
-// JSONPではなく、main.jsと同じ堅牢なPOST通信を使用します
 async function postApi_(action, payload, opt){
   if(!API_EXEC_URL || !API_EXEC_URL.includes('/exec')){
     throw new Error('API_EXEC_URL が未設定です');
@@ -22,14 +21,13 @@ async function postApi_(action, payload, opt){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  // main.js と全く同じデータ構造（actionを含めた1つのJSON）にする
   const bodyData = { action: action, ...payload };
 
   try {
     const response = await fetch(API_EXEC_URL, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'text/plain' }, // CORSの事前確認（OPTIONS）を回避する魔法のヘッダー
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(bodyData),
       signal: controller.signal
     });
@@ -48,17 +46,12 @@ async function postApi_(action, payload, opt){
 
 async function api_(action, payload, opt){
   const p = payload || {};
-  
   const token = sessionStorage.getItem('kb_admin_token');
   if(token) p.token = token;
-
   if (sessionStorage.getItem('kb_admin_ensured')) {
     p.skip_ensure = true;
   }
-
-  // POST通信関数を呼び出す
   const resp = await postApi_(action, p, { timeoutMs: opt?.timeoutMs });
-  
   if(!resp) throw new Error('APIレスポンスが空です');
   
   if(resp.status === 'error' || resp.ok === false){
@@ -83,7 +76,6 @@ async function initAuth_() {
   if (key) {
     showOverlay('鍵を認証中...');
     try {
-      // POST通信で認証を試みる
       const res = await postApi_('verify_magic_link', { key: key }, { timeoutMs: 15000 });
       if (res && res.data && res.data.token) {
         sessionStorage.setItem('kb_admin_token', res.data.token);
@@ -491,9 +483,6 @@ function renderRemain_(slots){
   qs('admTimes').innerHTML = html;
 }
 
-// =======================================================
-// ★ 汎用的なIN（来店受付）モーダルの構築ロジック
-// =======================================================
 function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr) {
   const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
   const targetRes = qrData.reservation;
@@ -665,7 +654,6 @@ function renderList_(reservations){
     if(stLower==='noshow') row.classList.add('is-noshow');
     if(stLower==='paid_on_site' || stLower==='checked_in') row.classList.add('is-checkedin');
 
-    // ★ 変更箇所：ステータスに応じて名前の背景色を変える
     let nameStyle = '';
     if(stLower === 'paid_on_site' || stLower === 'checked_in') {
       nameStyle = 'background-color: #2563EB; color: #fff; padding: 2px 6px; border-radius: 6px; display: inline-block;';
@@ -996,37 +984,48 @@ function wireActions_(){
     }
   });
 
+  // ★ 変更箇所：マニュアルの中身を極限まで詳細化し、誰でも100%理解できるように作り直しました
   const helpBtn = qs('admHelpMain');
   if(helpBtn){
     helpBtn.addEventListener('click', ()=>{
       const content = `
         <div style="font-size: 0.95em; line-height: 1.6; max-height: 60vh; overflow-y: auto; padding-right: 10px; text-align: left; color:#333;">
-          <h3 style="color:#2563EB; margin-top:0; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📅 日付の選択</h3>
-          <p style="margin-top:5px;">日付部分をタップして、管理したい日を選びます。</p>
+          
+          <div style="background:#FFFBEB; border:2px solid #F59E0B; padding:10px; border-radius:8px; margin-bottom:15px;">
+            <h3 style="color:#D97706; margin-top:0; margin-bottom:5px;">⚠️ 最重要：日付合わせについて</h3>
+            <p style="margin:0; font-weight:bold;">管理画面での操作（予約一覧の確認、IN、来ず、QR受付）はすべて「現在選択されている日付」に対して行われます。<br>必ず画面上部の日付表示が「今日（または操作したい日）」になっていることを確認してから操作してください。日付がずれているとQRコード読み取り時などにエラーになります。</p>
+          </div>
 
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">⏰ 開放設定（枠の開け閉め・定員）</h3>
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">👤 予約一覧と色分けの意味</h3>
+          <p style="margin-top:5px;">お客様の名前の背景色で状況が一目でわかります。</p>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>時間ボタン</b>: タップでON(黒)/OFF(白) 切替。予約がある時間はOFFにできません。</li>
-            <li style="margin-bottom:5px;"><b>定員入力</b>: 右側の数字で各時間の定員を設定します。</li>
-            <li style="margin-bottom:5px;"><b>定員一括変更</b>: 左上の入力欄に数字を入れて「定員一括変更」を押すと全時間帯に反映されます。</li>
-            <li style="color:#E60012; font-weight:bold;">※変更後は必ず「決定（反映）」ボタンを押して保存してください！</li>
+            <li style="margin-bottom:5px;"><b>無色（デフォルト）</b>：これから来店する（予約中）のお客様です。</li>
+            <li style="margin-bottom:5px;"><span style="background-color:#2563EB; color:#fff; padding:2px 6px; border-radius:6px;">青色</span>：すでに「IN（受付済）」のお客様、または「飛び込み」で受付したお客様です。</li>
+            <li style="margin-bottom:5px;"><span style="background-color:#EF4444; color:#fff; padding:2px 6px; border-radius:6px;">赤色</span>：無断キャンセルとして「来ず」処理をしたお客様です。</li>
           </ul>
 
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">👤 予約の受付・人数変更</h3>
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">✅ 受付・キャンセル操作（各ボタン）</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>IN</b>: 来店時に押します（人数の調整もここで行えます）。</li>
-            <li style="margin-bottom:5px;"><b>来ず</b>: 無断キャンセル時に押すと「未回収対象」に自動登録されます。</li>
-            <li style="margin-bottom:5px;"><b>詳細</b>: お客様の住所や累計来店回数などを確認できます。</li>
+            <li style="margin-bottom:5px;"><b>IN（手動受付）</b>: 事前予約のお客様が来店された際に押します。プランや人数の変更、料金の手動修正もここで行い、確定すると「青色」になります。</li>
+            <li style="margin-bottom:5px;"><b>来ず（無断キャンセル）</b>: お客様が来店されなかった場合に押します。赤色に変わり、自動的に「未回収対象（キャンセル料請求リスト）」に追加されます。</li>
+            <li style="margin-bottom:5px;"><b>詳細</b>: 住所や電話番号、累計来店回数などを確認できます。</li>
           </ul>
 
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📸 QRで来店受付（飛び込み対応）</h3>
-          <p style="margin-top:5px;">お客様のスマホのQRを読み取ります。当日の日付が表示され、入力した人数に応じて即座に予定料金を計算します。「IN」を押すと来店回数が加算され、料金が確定します。</p>
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📸 QRで来店受付</h3>
+          <p style="margin-top:5px;">事前予約のお客様の「会員証QR」、または予約なし（飛び込み）のお客様の「会員証QR」を読み取ります。<br>※必ず管理画面の日付を「今日」にしてからスキャンしてください。<br>自動で予約状況や重複をチェックし、受付画面が開きます。</p>
 
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">💰 料金・基本・キャンペーン設定</h3>
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">⏰ 枠の開け閉め・定員設定</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>料金設定</b>: 右下の青いボタンから、基本単価（平日/土日祝）を設定します。</li>
-            <li style="margin-bottom:5px;"><b>基本設定</b>: キャンペーン期間と値引き額を設定できます。</li>
-            <li style="margin-bottom:5px;"><b>未回収対象</b>: 後日支払い待ちリストです。回収済になったら「選択を解除」を押します。</li>
+            <li style="margin-bottom:5px;"><b>時間ボタン（黒=ON / 白=OFF）</b>: 予約を受け付ける時間を切り替えます。予約が既に入っている時間はOFFにできません。</li>
+            <li style="margin-bottom:5px;"><b>定員入力</b>: 時間ごとの定員を設定します。左上の「定員一括変更」に数字を入れてボタンを押すと全時間に反映されます。</li>
+            <li style="color:#E60012; font-weight:bold;">※変更後は一番下の「決定（反映）」ボタンを必ず押してください！</li>
+          </ul>
+
+          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">💰 キャンペーン割引の使い方</h3>
+          <p style="margin-top:5px;">画面一番下の「基本設定」から設定します。</p>
+          <ul style="padding-left: 20px; margin-top:5px;">
+            <li style="margin-bottom:5px;">開始日と終了日を「2026-03-01」のように入力し、値引き額（1人あたり）を設定して保存します。</li>
+            <li style="margin-bottom:5px;">設定期間内の予約やQR受付に対して、自動的に値引き額が差し引かれた料金がシステムで計算・提示されます。</li>
           </ul>
         </div>
       `;
