@@ -10,59 +10,40 @@ const CLOSE_HOUR = 20;
 let _currentDateStr = '';
 let _lastData = null;
 
-// ----------------- JSONP（CORS回避） -----------------
-function jsonp_(action, payload, opt){
-  return new Promise((resolve, reject)=>{
-    if(!API_EXEC_URL || !API_EXEC_URL.includes('/exec')){
-      reject(new Error('API_EXEC_URL が未設定です'));
-      return;
+// ----------------- POST通信（Google複数アカウント問題 回避版） -----------------
+// JSONPではなく、main.jsと同じ堅牢なPOST通信を使用します
+async function postApi_(action, payload, opt){
+  if(!API_EXEC_URL || !API_EXEC_URL.includes('/exec')){
+    throw new Error('API_EXEC_URL が未設定です');
+  }
+
+  const options = opt || {};
+  const timeoutMs = Math.max(1000, Number(options.timeoutMs || 15000));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // main.js と全く同じデータ構造（actionを含めた1つのJSON）にする
+  const bodyData = { action: action, ...payload };
+
+  try {
+    const response = await fetch(API_EXEC_URL, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' }, // CORSの事前確認（OPTIONS）を回避する魔法のヘッダー
+      body: JSON.stringify(bodyData),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timer);
+    const json = await response.json();
+    return json;
+  } catch(e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') {
+      throw new Error('タイムアウト（API応答なし）');
     }
-
-    const options = opt || {};
-    const timeoutMs = Math.max(1000, Number(options.timeoutMs || 15000));
-    const requestId = String(options.requestId || '');
-    const cb = '__cb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
-
-    let done = false;
-    let timer = null;
-    let script = null;
-
-    const cleanup = ()=>{
-      if(done) return;
-      done = true;
-      if(timer){ clearTimeout(timer); timer = null; }
-      try{ delete window[cb]; }catch(_){ window[cb]=undefined; }
-      if(script && script.parentNode) script.parentNode.removeChild(script);
-    };
-
-    window[cb] = (resp)=>{
-      if(done) return;
-      if(requestId && window.__ADMIN_LAST_REQ_ID && requestId !== window.__ADMIN_LAST_REQ_ID){
-        cleanup();
-        return;
-      }
-      cleanup();
-      resolve(resp);
-    };
-
-    const q = new URLSearchParams();
-    q.set('callback', cb);
-    q.set('action', action);
-    q.set('payload', JSON.stringify(payload||{}));
-
-    script = document.createElement('script');
-    script.src = API_EXEC_URL + '?' + q.toString();
-    script.onerror = ()=>{
-      cleanup();
-      reject(new Error('通信に失敗しました'));
-    };
-    document.head.appendChild(script);
-
-    timer = setTimeout(()=>{
-      cleanup();
-      reject(new Error('タイムアウト（API応答なし）'));
-    }, timeoutMs);
-  });
+    throw new Error('通信に失敗しました。');
+  }
 }
 
 async function api_(action, payload, opt){
@@ -75,11 +56,9 @@ async function api_(action, payload, opt){
     p.skip_ensure = true;
   }
 
-  const options = opt || {};
-  const reqId = 'r_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
-  window.__ADMIN_LAST_REQ_ID = reqId;
-
-  const resp = await jsonp_(action, p, { timeoutMs: options.timeoutMs, requestId: reqId });
+  // POST通信関数を呼び出す
+  const resp = await postApi_(action, p, { timeoutMs: opt?.timeoutMs });
+  
   if(!resp) throw new Error('APIレスポンスが空です');
   
   if(resp.status === 'error' || resp.ok === false){
@@ -104,7 +83,8 @@ async function initAuth_() {
   if (key) {
     showOverlay('鍵を認証中...');
     try {
-      const res = await jsonp_('verify_magic_link', { key: key }, { timeoutMs: 15000 });
+      // POST通信で認証を試みる
+      const res = await postApi_('verify_magic_link', { key: key }, { timeoutMs: 15000 });
       if (res && res.data && res.data.token) {
         sessionStorage.setItem('kb_admin_token', res.data.token);
         const newUrl = window.location.pathname;
@@ -1067,7 +1047,7 @@ function attachPricingUI_(){
 
   async function openPricing_(){
     try{
-      const cur = await api_('admin_pricing_get', {}, { timeoutMs:15000 });
+      const cur = await postApi_('admin_pricing_get', {}, { timeoutMs:15000 });
       const conf = cur && cur.ok ? cur.data : cur;
       const enabled = String(prompt('料金表示をONにしますか？ true/false', String(conf.pricingEnabled))) || String(conf.pricingEnabled);
       const weekday = String(prompt('平日単価（税込）', String(conf.priceWeekday))) || String(conf.priceWeekday);
@@ -1084,7 +1064,7 @@ function attachPricingUI_(){
         taxRate: taxRate,
         holidayCalendarId: calId
       };
-      const r = await api_('admin_pricing_set', payload, { timeoutMs:15000 });
+      const r = await postApi_('admin_pricing_set', payload, { timeoutMs:15000 });
       if(r && r.ok){
         openModal(
           '完了',
