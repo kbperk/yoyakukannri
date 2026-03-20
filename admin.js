@@ -512,7 +512,6 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
       <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${escapeHtml_(memberName)} 様</p>
   `;
 
-  // ★ 賢いチェック：未消化予約の警告をモーダル内に表示
   if (unconsumedReservation) {
       walkInHtml += `
       <div style="background:#FFFBEB; border:2px solid #F59E0B; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
@@ -522,7 +521,6 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
       `;
   }
 
-  // ★ 賢いチェック：重複の警告（ソフトブロック）をモーダル内に表示
   if (duplicateWarning) {
       walkInHtml += `
       <div style="background:#FEF2F2; border:2px solid #EF4444; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
@@ -663,8 +661,17 @@ function renderList_(reservations){
     const row = document.createElement('div');
     row.className = 'row';
 
-    if(String(r.status).toLowerCase()==='noshow') row.classList.add('is-noshow');
-    if(String(r.status).toLowerCase()==='paid_on_site' || String(r.status).toLowerCase()==='checked_in') row.classList.add('is-checkedin');
+    const stLower = String(r.status).toLowerCase();
+    if(stLower==='noshow') row.classList.add('is-noshow');
+    if(stLower==='paid_on_site' || stLower==='checked_in') row.classList.add('is-checkedin');
+
+    // ★ 変更箇所：ステータスに応じて名前の背景色を変える
+    let nameStyle = '';
+    if(stLower === 'paid_on_site' || stLower === 'checked_in') {
+      nameStyle = 'background-color: #2563EB; color: #fff; padding: 2px 6px; border-radius: 6px; display: inline-block;';
+    } else if(stLower === 'noshow') {
+      nameStyle = 'background-color: #EF4444; color: #fff; padding: 2px 6px; border-radius: 6px; display: inline-block;';
+    }
 
     row.innerHTML = `
       <div class="row-main">
@@ -676,7 +683,7 @@ function renderList_(reservations){
       </div>
       <div class="row-sub" style="flex-direction:column; align-items:flex-start; gap:10px;">
         <div class="meta" style="width:100%;">
-          <span class="kv font-bold">${escapeHtml_(r.name||'')}</span>
+          <span class="kv font-bold" style="${nameStyle}">${escapeHtml_(r.name||'')}</span>
           <span class="kv" style="font-size:0.9em;">${escapeHtml_(r.phone||'')}</span>
         </div>
         <div class="ops" style="display:flex; gap:6px; width:100%; flex-wrap:wrap;">
@@ -893,7 +900,6 @@ function wireActions_(){
     }
   });
 
-  // ★ 変更箇所：強制閉鎖（緊急閉鎖）ボタンのモーダルと挙動を修正
   qs('admForce').addEventListener('click', ()=>{
     openModal('本当に強制閉鎖を行いますか？', `<div style="text-align:center; font-weight:bold; font-size:1.1em; padding:10px 0;">選択中の日付（${fmtJP(_currentDateStr)}）を強制閉鎖します。よろしいですか？</div>`,
       `<div style="width:100%; display:flex; gap:10px;">
