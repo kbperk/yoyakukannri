@@ -1,5 +1,5 @@
 /* =========================================================
- * admin.js (GitHub Pages 用) — 管理画面UI 完全コピー動作版
+ * admin.js (GitHub Pages 用) — 管理画面UI 完全動作・ポイント対応版
  * ========================================================= */
 
 const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbwkkj4vp6v9gfjLZIxsLN-1aaUjyQebngxfTuMDPz62x_xg4dCadey920wmL3IYtS82kA/exec';
@@ -9,6 +9,9 @@ const CLOSE_HOUR = 20;
 
 let _currentDateStr = '';
 let _lastData = null;
+
+// ★ 新規: アプリ設定のキャッシュ用
+let _appSettingsCache = {};
 
 // ----------------- POST通信（Google複数アカウント問題 回避版） -----------------
 async function postApi_(action, payload, opt){
@@ -95,6 +98,18 @@ async function initAuth_() {
   if (!token) {
     document.body.innerHTML = '<div style="padding:30px;text-align:center;color:#EF4444;font-weight:bold;font-size:1.2em;margin-top:50px;">URLが不正です。<br><br>管理者用の正しいブックマーク（合鍵付きURL）からアクセスしてください。</div>';
     throw new Error("No Token");
+  }
+}
+
+// ----------------- アプリ設定のロード (裏側で実行) -----------------
+async function loadAppSettings_() {
+  try {
+    const token = sessionStorage.getItem('kb_admin_token');
+    if (!token) return;
+    const res = await postApi_('admin_app_settings_get', { token: token }, { timeoutMs: 10000 });
+    _appSettingsCache = res.data || res || {};
+  } catch(e) {
+    console.warn("AppSettings load error", e);
   }
 }
 
@@ -284,11 +299,7 @@ async function showMonth_(year, month){
 
   }catch(e){
     hideOverlay();
-    openModal(
-      '⚠️ エラー',
-      `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-      `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-    );
+    openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
   }
 }
 
@@ -483,159 +494,193 @@ function renderRemain_(slots){
   qs('admTimes').innerHTML = html;
 }
 
+// ★ 新規追加機能：2軸ポイント表示と割引メニューの排他制御を組み込んだ受付モーダル
 function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr) {
   const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
   const targetRes = qrData.reservation;
   const settings = qrData.settings || {};
   const duplicateWarning = qrData.duplicate_warning === true;
   const unconsumedReservation = qrData.unconsumed_reservation || null;
-  
+  const m = qrData.member || {};
   const todayUnitPrice = Number(qrData.today_unit_price || 0);
 
   let isReserved = (targetRes && targetRes.status === 'reserved');
-  let initialHead = isReserved ? (targetRes.head_count || 0) : 1;
-  let initialAmount = 0; 
+  let initialHead = isReserved ? (targetRes.head_count || 1) : 1;
 
-  let walkInHtml = `
-      <p style="font-weight:bold; color:#F59E0B; margin-bottom:10px; font-size:1.1em;">⚠️ 予約なし (飛び込み)</p>
-      <p style="font-weight:bold; font-size:1.2em; margin-bottom:15px;">${escapeHtml_(memberName)} 様</p>
-  `;
+  let isCamp = false;
+  let cDisc = Number(settings.campaign_discount || 0);
+  if (cDisc > 0 && settings.campaign_start && settings.campaign_end && todayStr >= settings.campaign_start && todayStr <= settings.campaign_end) {
+      isCamp = true;
+  }
+  const baseUnit = isCamp ? (todayUnitPrice + cDisc) : todayUnitPrice;
 
-  if (unconsumedReservation) {
-      walkInHtml += `
-      <div style="background:#FFFBEB; border:2px solid #F59E0B; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
-        <p style="color:#D97706; font-weight:bold; margin-bottom:5px;">⚠️ 事前予約あり（未消化）</p>
-        <p style="font-size:0.9em; font-weight:bold; line-height: 1.4;">このお客様は本日（${escapeHtml_(unconsumedReservation.time)} / ${unconsumedReservation.head}名）に予約が入っています。<br>予約を消化せず、別の「飛び込み」として受付しますか？</p>
-      </div>
-      `;
+  // 割引オプション（ラジオボタン）HTMLの構築
+  let optionsHtml = '';
+  if (isCamp) {
+    optionsHtml += `
+      <label style="display:flex; align-items:center; gap:8px; padding:10px; background:#fff; border:2px solid #E60012; border-radius:8px; margin-bottom:8px; cursor:pointer;">
+        <input type="radio" name="discount_type" value="campaign" checked style="transform:scale(1.2);">
+        <span style="font-weight:bold; color:#E60012;">🎁 キャンペーン適用 (-${cDisc}円/人)</span>
+      </label>
+    `;
+  } else {
+    optionsHtml += `
+      <label style="display:flex; align-items:center; gap:8px; padding:10px; background:#fff; border:1px solid #ccc; border-radius:8px; margin-bottom:8px; cursor:pointer;">
+        <input type="radio" name="discount_type" value="none" checked style="transform:scale(1.2);">
+        <span style="font-weight:bold; color:#333;">割引なし（通常料金）</span>
+      </label>
+    `;
   }
 
-  if (duplicateWarning) {
-      walkInHtml += `
-      <div style="background:#FEF2F2; border:2px solid #EF4444; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left;">
-        <p style="color:#EF4444; font-weight:bold; margin-bottom:5px;">⚠️ 重複の警告</p>
-        <p style="font-size:0.9em; font-weight:bold; line-height: 1.4;">本日すでに1回受付済みの履歴があります。<br>2回目の別利用として受付しますか？</p>
-      </div>
+  for (let i=1; i<=3; i++) {
+    const reqPt = Number(_appSettingsCache[`ex_pt_${i}`] || 0);
+    const discAmt = Number(_appSettingsCache[`ex_discount_${i}`] || 0);
+    const text = _appSettingsCache[`ex_text_${i}`] || '';
+    if (reqPt > 0) {
+      const disabled = (m.current_point || 0) < reqPt;
+      const opacity = disabled ? '0.5' : '1';
+      optionsHtml += `
+        <label style="display:flex; align-items:center; gap:8px; padding:10px; background:#fff; border:1px solid #ccc; border-radius:8px; margin-bottom:8px; cursor:${disabled ? 'not-allowed' : 'pointer'}; opacity:${opacity};">
+          <input type="radio" name="discount_type" value="point_${i}" ${disabled ? 'disabled' : ''} style="transform:scale(1.2);">
+          <span style="font-weight:bold; color:#2563EB;">✨ ${text} (${reqPt}pt消費)</span>
+        </label>
       `;
+    }
   }
+  
+  let warnHtml = '';
+  if(duplicateWarning) warnHtml += `<p style="color:#E60012; font-weight:bold; margin-bottom:10px; background:#FFE5E5; padding:8px; border-radius:6px;">⚠️ 本日すでにINの記録があります（二重受付の可能性）</p>`;
+  if(unconsumedReservation) warnHtml += `<p style="color:#E60012; font-weight:bold; margin-bottom:10px; background:#FFE5E5; padding:8px; border-radius:6px;">⚠️ 本日 ${unconsumedReservation.time} に別の予約（${unconsumedReservation.head}名）が残っています</p>`;
 
-  const resInfoHtml = isReserved ? `
-      <p style="font-weight:bold; color:#10B981; margin-bottom:10px; font-size:1.1em;">✅ 事前予約あり</p>
-      <div style="background:#E6F4EA; padding:10px; border-radius:8px; margin-bottom:15px; text-align:left; border: 1px solid #10B981;">
-        <p style="margin-bottom:4px;"><strong>お名前:</strong> ${escapeHtml_(memberName)} 様</p>
-        <p style="margin-bottom:4px;"><strong>予約日時:</strong> ${escapeHtml_(todayStr)} ${escapeHtml_(targetRes.slot_id.slice(11,16))}</p>
-        <p style="margin-bottom:0;"><strong>予約人数:</strong> ${initialHead} 名</p>
-      </div>
-  ` : walkInHtml;
-
-  const inputHtml = `
-      <div style="background:#F3F4F6; padding:15px; border-radius:12px; margin-bottom:15px; text-align:left;">
-        <label style="display:block; font-weight:bold; margin-bottom:5px;">割引プラン選択</label>
-        <select id="qrPlanSelect" style="width:100%; padding:8px; font-size:1.1em; border-radius:8px; border:1px solid #ccc; margin-bottom:15px; background:#fff;">
-          <option value="normal">通常 (会員基本料金)</option>
-          <option value="preschool">大人+未就学児 (2000円 / 基本2名)</option>
-          <option value="school">大人+小学生 (2500円 / 基本2名)</option>
-          <option value="kids2">大人+子供2名 (3500円 / 基本3名)</option>
-        </select>
-
-        <label style="display:block; font-weight:bold; margin-bottom:5px;">総人数 (枠超過分は自動加算)</label>
-        <input type="number" id="qrHeadCount" value="${initialHead}" min="1" inputmode="numeric" style="width:100%; font-size:1.5em; text-align:center; padding:8px; border:2px solid #ccc; border-radius:8px; margin-bottom:15px;">
-
-        <label style="display:block; font-weight:bold; margin-bottom:5px; color:#E60012;">最終確定金額 (手動上書き可)</label>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <input type="number" id="qrFinalAmount" value="${initialAmount}" min="0" inputmode="numeric" style="flex:1; font-size:1.5em; text-align:right; padding:8px; border:2px solid #E60012; border-radius:8px; color:#E60012; font-weight:bold;">
-          <span style="font-weight:bold; font-size:1.2em;">円</span>
+  const html = `
+    <div style="text-align:left;">
+      ${warnHtml}
+      <p style="margin-bottom:10px;">会員: <strong style="font-size:1.2em;">${escapeHtml_(memberName)}</strong> 様</p>
+      ${targetRes ? `<p style="margin-bottom:10px; color:#2563EB; font-weight:bold;">予約あり: ${targetRes.slot_id.slice(11,16)} (${targetRes.head_count}名)</p>` : '<p style="margin-bottom:10px; color:#E60012; font-weight:bold;">※予約なし（飛び込み）</p>'}
+      
+      <div style="margin:15px 0; padding:15px; background:#F0FFF4; border:2px solid #32D74B; border-radius:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px; border-bottom:1px dashed #ccc; padding-bottom:10px;">
+          <div style="text-align:center; flex:1; border-right:1px dashed #ccc;">
+            <p style="font-size:0.8em; color:#32D74B; font-weight:bold;">保有ポイント</p>
+            <p style="font-size:1.6em; font-weight:900; color:#333;">${m.current_point || 0}<span style="font-size:0.6em;">pt</span></p>
+          </div>
+          <div style="text-align:center; flex:1;">
+            <p style="font-size:0.8em; color:#2563EB; font-weight:bold;">累計来店回数</p>
+            <p style="font-size:1.6em; font-weight:900; color:#333;">${m.visit_count || 0}<span style="font-size:0.6em;">回</span></p>
+          </div>
         </div>
-        <p style="font-size:0.85em; color:#666; margin-top:5px; line-height:1.4;">※システムが自動計算した目安です。スタッフの判断で自由に金額を書き換えられます。</p>
+        <p style="font-size:0.9em; font-weight:bold; color:#666; margin-bottom:8px;">▼ 割引メニューの選択（併用不可）</p>
+        <div id="discountOptionsArea" style="background:#f9f9f9; padding:10px; border-radius:8px;">
+          ${optionsHtml}
+        </div>
       </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; background:#f4f4f4; padding:10px; border-radius:8px; margin-bottom:15px;">
+        <p style="font-weight:bold;">来店人数</p>
+        <input type="number" id="qrHeadCount" value="${initialHead}" min="1" style="width:100px; padding:8px; border:2px solid #ccc; border-radius:6px; font-size:1.2em; font-weight:bold; text-align:center;">
+      </div>
+
+      <div style="text-align:right; font-size:1.2em; font-weight:bold; padding:10px 0;">
+        お会計目安: <span id="qrFinalAmount" style="color:#E60012; font-size:1.8em; font-weight:900;">0</span> 円
+      </div>
+    </div>
   `;
 
-  openModal('来店受付', `
-    <div style="text-align:center; padding:5px;">
-      <p style="font-weight:bold; color:#2563EB; font-size:1.1em; margin-bottom:10px;">本日の日付: ${escapeHtml_(todayStr)}</p>
-      ${resInfoHtml}
-      ${inputHtml}
-    </div>
-  `, `
+  openModal('受付内容の確認', html, `
     <div style="display:flex; gap:10px; width:100%;">
-      <button class="btn-outline press" style="flex:1;" onclick="closeModal()">キャンセル</button>
-      <button class="btn press" id="qrInBtn" style="flex:1; background:#10B981; color:#fff; border:none;">IN (確定)</button>
+      <button id="qrCancelBtn" class="btn-outline press" style="flex:1; padding:15px; font-weight:bold;">キャンセル</button>
+      <button id="qrCommitBtn" class="btn press" style="flex:1; background-color:#10B981; color:#fff; padding:15px; font-weight:bold; font-size:1.1em; border:none;">IN 確定</button>
     </div>
   `);
 
-  const recalc = () => {
-      const plan = document.getElementById('qrPlanSelect').value;
-      const head = Number(document.getElementById('qrHeadCount').value) || 1;
-      let basePrice = 0;
-      let baseHead = 0;
+  const headInput = document.getElementById('qrHeadCount');
+  const amountSpan = document.getElementById('qrFinalAmount');
+  const radios = document.querySelectorAll('input[name="discount_type"]');
 
-      if (plan === 'preschool') { basePrice = 2000; baseHead = 2; }
-      else if (plan === 'school') { basePrice = 2500; baseHead = 2; }
-      else if (plan === 'kids2') { basePrice = 3500; baseHead = 3; }
-
-      let calcAmount = 0;
-      if (plan === 'normal') {
-          calcAmount = head * todayUnitPrice;
-      } else {
-          let excessHead = Math.max(0, head - baseHead);
-          calcAmount = basePrice + (excessHead * todayUnitPrice);
-      }
-
-      document.getElementById('qrFinalAmount').value = calcAmount;
+  const updateCalc = () => {
+    const head = parseInt(headInput.value) || 1;
+    let total = head * baseUnit;
+    const selectedRadio = document.querySelector('input[name="discount_type"]:checked');
+    if(selectedRadio){
+       const selected = selectedRadio.value;
+       if (selected === 'campaign' && isCamp) {
+         total -= (cDisc * head);
+       } else if (selected.startsWith('point_')) {
+         const idx = selected.split('_')[1];
+         const disc = Number(_appSettingsCache[`ex_discount_${idx}`] || 0);
+         total -= disc; // ポイント割引は1会計1回
+       }
+    }
+    total = Math.max(0, total);
+    amountSpan.textContent = total.toLocaleString();
   };
 
-  document.getElementById('qrPlanSelect').addEventListener('change', recalc);
-  document.getElementById('qrHeadCount').addEventListener('input', recalc);
+  headInput.addEventListener('input', updateCalc);
+  radios.forEach(rd => rd.addEventListener('change', updateCalc));
+  updateCalc(); 
 
-  recalc();
+  document.getElementById('qrCancelBtn').onclick = () => closeModal();
+  
+  document.getElementById('qrCommitBtn').onclick = async () => {
+    const head = parseInt(headInput.value) || 1;
+    if (head < 1) {
+      alert('人数は1名以上にしてください');
+      return;
+    }
+    
+    let total = head * baseUnit;
+    let consumePt = 0;
+    let noteText = '';
+    const selected = document.querySelector('input[name="discount_type"]:checked').value;
 
-  document.getElementById('qrInBtn').addEventListener('click', async () => {
-      const finalHead = Number(document.getElementById('qrHeadCount').value) || 1;
-      const finalAmount = Number(document.getElementById('qrFinalAmount').value) || 0;
+    if (selected === 'campaign' && isCamp) {
+      total -= (cDisc * head);
+      noteText = 'キャンペーン適用';
+    } else if (selected.startsWith('point_')) {
+      const idx = selected.split('_')[1];
+      const reqPt = Number(_appSettingsCache[`ex_pt_${idx}`] || 0);
+      const disc = Number(_appSettingsCache[`ex_discount_${idx}`] || 0);
+      const text = _appSettingsCache[`ex_text_${idx}`] || '';
+      total -= disc;
+      consumePt = reqPt;
+      noteText = `ポイント利用: ${text} (-${disc}円)`;
+    }
+    total = Math.max(0, total);
+
+    showOverlay('確定処理中...');
+    try {
+      const res2 = await api_('adminUpdateStatus', {
+        data: {
+          update_type: 'qr_commit',
+          date: todayStr,
+          member_id: scannedMemberId,
+          reservation_id: finalResId || '',
+          head_count: head,
+          final_amount: total,
+          consumed_point: consumePt,
+          discount_note: noteText
+        }
+      });
+      hideOverlay();
       closeModal();
       
-      try {
-        showOverlay('来店受付中...');
-        const res = await api_('adminUpdateStatus', { 
-          data: {
-            update_type: 'qr_commit',
-            member_id: scannedMemberId, 
-            reservation_id: finalResId,
-            head_count: finalHead,
-            final_amount: finalAmount, 
-            date: todayStr 
-          }
-        });
-        
-        let msg = `${escapeHtml_(res.member_name)} 様の来店を受付しました！<br>（累計来店: <strong style="color:#2563EB;">${res.new_count}回</strong>）`;
-        if (res.checked_in_count > 0) {
-          msg += `<br><br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${Number(res.amount||0).toLocaleString()}円</strong>`;
-
-          if (res.new_count === 1) {
-              msg += `<br><br><div style="background:#FFF0F0; border:2px solid #E60012; padding:10px; border-radius:8px;">
-                        <p style="color:#E60012; font-weight:bold; margin-bottom:5px;">⚠️ 初回利用です！</p>
-                        <p style="font-size:0.9em; font-weight:bold;">上記の施設利用料に加えて、<br><strong>初回登録料 800円</strong> を<br>合算してご請求ください。</p>
-                      </div>`;
-          }
-        } else {
-          msg += `<br><span style="color:#d32f2f;">※予約の処理に失敗しました。</span>`;
-        }
-        
-        openModal(
-          '受付完了', 
-          `<div style="text-align:center; padding: 10px; font-size: 1.1em; line-height: 1.5;">${msg}</div>`, 
-          '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
-        );
-        await loadAndRender_();
-      } catch(e) {
-        hideOverlay();
-        openModal(
-          '⚠️ エラー',
-          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-        );
+      let msg = `${escapeHtml_(res2.member_name)} 様の受付が完了しました！<br>（累計来店: <strong style="color:#2563EB;">${res2.new_count}回</strong>）`;
+      if (consumePt > 0) {
+          msg += `<br><br>※ポイントを <strong style="color:#E60012;">${consumePt}pt</strong> 消費しました。<br>`;
       }
-  });
+      msg += `<br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${total.toLocaleString()}円</strong>`;
+
+      openModal(
+        '受付完了', 
+        `<div style="text-align:center; padding: 10px; font-size: 1.1em; line-height: 1.5;">${msg}</div>`, 
+        '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
+      );
+      await loadAndRender_();
+    } catch (err) {
+      hideOverlay();
+      openModal('⚠️ エラー', `<div style="color:#E60012; font-weight:bold; white-space:pre-wrap;">${escapeHtml_(err.message || String(err))}</div>`, `<button class="btn press" onclick="closeModal()" style="width:100%;">閉じる</button>`);
+    }
+  };
 }
 
 function renderList_(reservations){
@@ -696,11 +741,7 @@ function renderList_(reservations){
         buildAndShowCheckInModal(qrData, r.member_id, r.id, _currentDateStr);
       } catch(e) {
         hideOverlay();
-        openModal(
-          '⚠️ エラー',
-          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-        );
+        openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
       }
     });
     
@@ -713,11 +754,7 @@ function renderList_(reservations){
         setTimeout(hideBanner, 3000);
       }catch(e){
         hideOverlay();
-        openModal(
-          '⚠️ エラー',
-          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-        );
+        openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
       }
     });
 
@@ -880,11 +917,7 @@ function wireActions_(){
 
     }catch(e){
       hideOverlay();
-      openModal(
-        '⚠️ エラー',
-        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-      );
+      openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
     }
   });
 
@@ -907,11 +940,7 @@ function wireActions_(){
           setTimeout(hideBanner, 4000);
         }catch(e){
           hideOverlay();
-          openModal(
-            '⚠️ エラー',
-            `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-            `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-          );
+          openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
         }
       };
     },0);
@@ -936,11 +965,7 @@ function wireActions_(){
       setTimeout(hideBanner, 4000);
     }catch(e){
       hideOverlay();
-      openModal(
-        '⚠️ エラー',
-        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-      );
+      openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
     }
   });
 
@@ -958,75 +983,40 @@ function wireActions_(){
         data:{ 
           date:_currentDateStr, 
           toggles:collectToggles_(), 
-          settings:{ 
-            cutoffHours,
-            campaign_start,
-            campaign_end,
-            campaign_discount
-          } 
+          settings:{ cutoffHours, campaign_start, campaign_end, campaign_discount } 
         } 
       });
       hideOverlay();
-      
-      openModal(
-        '完了', 
-        '<div style="text-align:center; padding: 20px; font-size: 1.2em; font-weight: bold; color: #10B981;">✨ 設定を保存しました</div>', 
-        '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>'
-      );
-
+      openModal('完了', '<div style="text-align:center; padding: 20px; font-size: 1.2em; font-weight: bold; color: #10B981;">✨ 設定を保存しました</div>', '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; font-size:1em;" onclick="closeModal()">OK</button></div>');
     }catch(e){
       hideOverlay();
-      openModal(
-        '⚠️ エラー',
-        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`,
-        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-      );
+      openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(e.message || String(e))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
     }
   });
 
-  // ★ 変更箇所：マニュアルの中身を極限まで詳細化し、誰でも100%理解できるように作り直しました
   const helpBtn = qs('admHelpMain');
   if(helpBtn){
     helpBtn.addEventListener('click', ()=>{
       const content = `
         <div style="font-size: 0.95em; line-height: 1.6; max-height: 60vh; overflow-y: auto; padding-right: 10px; text-align: left; color:#333;">
-          
           <div style="background:#FFFBEB; border:2px solid #F59E0B; padding:10px; border-radius:8px; margin-bottom:15px;">
             <h3 style="color:#D97706; margin-top:0; margin-bottom:5px;">⚠️ 最重要：日付合わせについて</h3>
-            <p style="margin:0; font-weight:bold;">管理画面での操作（予約一覧の確認、IN、来ず、QR受付）はすべて「現在選択されている日付」に対して行われます。<br>必ず画面上部の日付表示が「今日（または操作したい日）」になっていることを確認してから操作してください。日付がずれているとQRコード読み取り時などにエラーになります。</p>
+            <p style="margin:0; font-weight:bold;">管理画面での操作（予約一覧の確認、IN、来ず、QR受付）はすべて「現在選択されている日付」に対して行われます。<br>必ず画面上部の日付表示が「今日（または操作したい日）」になっていることを確認してから操作してください。</p>
           </div>
-
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">👤 予約一覧と色分けの意味</h3>
-          <p style="margin-top:5px;">お客様の名前の背景色で状況が一目でわかります。</p>
           <ul style="padding-left: 20px; margin-top:5px;">
             <li style="margin-bottom:5px;"><b>無色（デフォルト）</b>：これから来店する（予約中）のお客様です。</li>
             <li style="margin-bottom:5px;"><span style="background-color:#2563EB; color:#fff; padding:2px 6px; border-radius:6px;">青色</span>：すでに「IN（受付済）」のお客様、または「飛び込み」で受付したお客様です。</li>
             <li style="margin-bottom:5px;"><span style="background-color:#EF4444; color:#fff; padding:2px 6px; border-radius:6px;">赤色</span>：無断キャンセルとして「来ず」処理をしたお客様です。</li>
           </ul>
-
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">✅ 受付・キャンセル操作（各ボタン）</h3>
           <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>IN（手動受付）</b>: 事前予約のお客様が来店された際に押します。プランや人数の変更、料金の手動修正もここで行い、確定すると「青色」になります。</li>
-            <li style="margin-bottom:5px;"><b>来ず（無断キャンセル）</b>: お客様が来店されなかった場合に押します。赤色に変わり、自動的に「未回収対象（キャンセル料請求リスト）」に追加されます。</li>
+            <li style="margin-bottom:5px;"><b>IN（手動受付）</b>: 事前予約のお客様が来店された際に押します。プランや人数の変更、料金・ポイント割引の手動修正もここで行い、確定すると「青色」になります。</li>
+            <li style="margin-bottom:5px;"><b>来ず（無断キャンセル）</b>: お客様が来店されなかった場合に押します。赤色に変わり、自動的に未回収対象に追加されます。</li>
             <li style="margin-bottom:5px;"><b>詳細</b>: 住所や電話番号、累計来店回数などを確認できます。</li>
           </ul>
-
           <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">📸 QRで来店受付</h3>
-          <p style="margin-top:5px;">事前予約のお客様の「会員証QR」、または予約なし（飛び込み）のお客様の「会員証QR」を読み取ります。<br>※必ず管理画面の日付を「今日」にしてからスキャンしてください。<br>自動で予約状況や重複をチェックし、受付画面が開きます。</p>
-
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">⏰ 枠の開け閉め・定員設定</h3>
-          <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;"><b>時間ボタン（黒=ON / 白=OFF）</b>: 予約を受け付ける時間を切り替えます。予約が既に入っている時間はOFFにできません。</li>
-            <li style="margin-bottom:5px;"><b>定員入力</b>: 時間ごとの定員を設定します。左上の「定員一括変更」に数字を入れてボタンを押すと全時間に反映されます。</li>
-            <li style="color:#E60012; font-weight:bold;">※変更後は一番下の「決定（反映）」ボタンを必ず押してください！</li>
-          </ul>
-
-          <h3 style="color:#2563EB; margin-top:20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px;">💰 キャンペーン割引の使い方</h3>
-          <p style="margin-top:5px;">画面一番下の「基本設定」から設定します。</p>
-          <ul style="padding-left: 20px; margin-top:5px;">
-            <li style="margin-bottom:5px;">開始日と終了日を「2026-03-01」のように入力し、値引き額（1人あたり）を設定して保存します。</li>
-            <li style="margin-bottom:5px;">設定期間内の予約やQR受付に対して、自動的に値引き額が差し引かれた料金がシステムで計算・提示されます。</li>
-          </ul>
+          <p style="margin-top:5px;">事前予約のお客様の「会員証QR」、または予約なし（飛び込み）のお客様の「会員証QR」を読み取ります。<br>自動で予約状況やポイント残高をチェックし、割引メニューの選択画面が開きます。</p>
         </div>
       `;
       openModal('システムの使い方マニュアル', content, `<button class="btn press" onclick="closeModal()" style="width:100%;">閉じる</button>`);
@@ -1077,24 +1067,10 @@ function attachPricingUI_(){
       };
       const r = await postApi_('admin_pricing_set', payload, { timeoutMs:15000 });
       if(r && r.ok){
-        openModal(
-          '完了',
-          `<div style="text-align:center; padding:20px; color:#10B981; font-weight:bold; font-size:1.1em;">料金設定を保存しました</div>`,
-          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">OK</button></div>`
-        );
-      }else{
-        openModal(
-          '⚠️ エラー',
-          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold;">保存に失敗しました<br>${escapeHtml_(r && r.error ? r.error : 'unknown')}</div>`,
-          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-        );
+        openModal('完了', `<div style="text-align:center; padding:20px; color:#10B981; font-weight:bold; font-size:1.1em;">料金設定を保存しました</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">OK</button></div>`);
       }
     }catch(err){
-      openModal(
-        '⚠️ エラー',
-        `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; line-height:1.6; white-space:pre-wrap;">料金設定エラー:\n${escapeHtml_(err.message || String(err))}</div>`,
-        `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-      );
+      openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; line-height:1.6; white-space:pre-wrap;">料金設定エラー:\n${escapeHtml_(err.message || String(err))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
     }
   }
 
@@ -1191,32 +1167,19 @@ function attachQRScannerUI_(){
             buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr);
           } catch(err) {
             hideOverlay();
-            openModal(
-              '⚠️ エラー',
-              `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(err.message || String(err))}</div>`,
-              `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`
-            );
+            openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(err.message || String(err))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
           }
 
         });
-      }, (err) => {
-      }).catch(err => {
-        openModal(
-          'カメラエラー',
-          `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold;">カメラの起動に失敗しました。<br>スマホの設定でカメラへのアクセスを許可してください。</div>`,
-          `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">閉じる</button></div>`
-        );
+      }, (err) => {}).catch(err => {
+        openModal('カメラエラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold;">カメラの起動に失敗しました。<br>スマホの設定でカメラへのアクセスを許可してください。</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">閉じる</button></div>`);
         overlay.style.display = 'none';
       });
     });
     
     closeBtn.addEventListener('click', () => {
       if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => {
-          overlay.style.display = 'none';
-        }).catch(() => {
-          overlay.style.display = 'none';
-        });
+        html5QrCode.stop().then(() => { overlay.style.display = 'none'; }).catch(() => { overlay.style.display = 'none'; });
       } else {
         overlay.style.display = 'none';
       }
@@ -1251,6 +1214,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   
   try {
     await initAuth_();
+    loadAppSettings_(); // ★ポイント用の設定キャッシュ取得
     
     const today = new Date();
     const y = today.getFullYear();
