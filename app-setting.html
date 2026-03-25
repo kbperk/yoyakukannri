@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>アプリ・ポイント設定</title>
+  <link rel="stylesheet" href="./admin.css" />
+  <style>
+    body { background-color: #f2f4f6; }
+    .card-title { font-size: 1.2em; font-weight: 800; border-bottom: 2px solid #E60012; padding-bottom: 8px; margin-bottom: 15px; color: #111315; }
+    .input-group { margin-bottom: 15px; }
+    .input-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #333; font-size: 0.9em; }
+    .input-group input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 1em; box-sizing: border-box; }
+    .input-row { display: flex; gap: 10px; }
+    .input-row .input-group { flex: 1; }
+    
+    /* キルスイッチ用トグルデザイン */
+    .toggle-switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #10B981; }
+    input:checked + .slider:before { transform: translateX(26px); }
+    
+    .status-text { font-weight: 900; font-size: 1.2em; margin-left: 10px; vertical-align: middle; }
+    .stat-box { background: #fff; border: 2px solid #2563EB; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 20px; }
+    .stat-num { font-size: 2em; font-weight: 900; color: #2563EB; margin: 5px 0; }
+  </style>
+</head>
+<body>
+
+  <header class="hd">
+    <h1>アプリ・ポイント設定</h1>
+    <button onclick="location.href='kanri_kb2026_secret_park.yuina.daigo.html'" class="btn-outline press" style="font-size: 14px;">戻る</button>
+  </header>
+
+  <main class="container" style="padding-top: 20px;">
+    
+    <section class="card">
+      <div class="card-bd" style="padding-top: 15px;">
+        <h2 class="card-title">📱 アプリ公開設定（キルスイッチ）</h2>
+        <div style="display: flex; align-items: center; margin-bottom: 20px; padding: 10px; background: #f8fafc; border-radius: 8px;">
+          <label class="toggle-switch">
+            <input type="checkbox" id="appPublicToggle">
+            <span class="slider"></span>
+          </label>
+          <span id="appPublicStatus" class="status-text">判定中...</span>
+        </div>
+        <p class="muted" style="font-size: 0.85em; margin-top: -10px;">※非公開にすると、お客様の予約画面からアプリのインストール案内が完全に消えます。バグ発生時の緊急停止用です。</p>
+
+        <div class="stat-box">
+          <div style="font-weight: bold; color: #666;">現在の累計インストール数</div>
+          <div class="stat-num" id="installCount">--</div>
+          <div style="font-size: 0.9em; color: #666;">台のスマホに入っています</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-bd" style="padding-top: 15px;">
+        <h2 class="card-title">🎁 ポイント獲得（増加）ルール</h2>
+        <p class="muted" style="font-size: 0.85em;">基本ルール：1名様のご利用につき 1pt 付与されます。</p>
+        
+        <div style="background: #FFFBEB; border: 1px solid #F59E0B; padding: 15px; border-radius: 8px; margin-top: 10px;">
+          <strong style="color: #D97706;">🌟 特定回数ボーナス設定</strong>
+          <div class="input-row" style="margin-top: 10px;">
+            <div class="input-group">
+              <label>対象の来店回数</label>
+              <input type="number" id="bonusVisitCount" placeholder="例: 5">
+            </div>
+            <div class="input-group">
+              <label>付与される追加pt</label>
+              <input type="number" id="bonusAddPoint" placeholder="例: 2">
+            </div>
+          </div>
+          <p style="font-size: 0.8em; color: #666; margin: 0;">※使わない場合は空欄にしてください。</p>
+        </div>
+
+        <div style="background: #FEF2F2; border: 1px solid #EF4444; padding: 15px; border-radius: 8px; margin-top: 15px;">
+          <strong style="color: #E60012;">🔥 ゲリラキャンペーン（期間倍増）</strong>
+          <div class="input-group" style="margin-top: 10px;">
+            <label>ポイント倍率</label>
+            <input type="number" id="guerrillaMultiplier" placeholder="例: 2 (2倍)">
+          </div>
+          <div class="input-row">
+            <div class="input-group">
+              <label>開始日</label>
+              <input type="date" id="guerrillaStart">
+            </div>
+            <div class="input-group">
+              <label>終了日</label>
+              <input type="date" id="guerrillaEnd">
+            </div>
+          </div>
+          <p style="font-size: 0.8em; color: #666; margin: 0;">※指定期間中、獲得ポイントが掛け算されます。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-bd" style="padding-top: 15px;">
+        <h2 class="card-title">🛍️ ポイント交換メニュー（消費）</h2>
+        <p class="muted" style="font-size: 0.85em;">お客様がポイントを使って割引等を受けられるメニューです。最大3つまで設定できます。（使わない枠は消費ptを0にしてください）</p>
+
+        <div id="exchangeMenuContainer"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-bd" style="padding-top: 15px;">
+        <h2 class="card-title">👑 累計来店ボーナス（到達）</h2>
+        <p class="muted" style="font-size: 0.85em;">ポイントとは別で、来店回数が到達した時に自動付与される特典です。（使わない枠は到達回数を0にしてください）</p>
+
+        <div id="reachBonusContainer"></div>
+      </div>
+    </section>
+
+    <div style="padding: 20px 10px 40px;">
+      <button id="saveSettingsBtn" class="btn press" style="font-size: 1.2em; padding: 20px;">すべての設定を保存する</button>
+    </div>
+
+    <section class="card">
+      <div class="card-bd" style="padding-top: 15px;">
+        <h2 class="card-title" style="border-color: #10B981; color: #10B981;">📣 掘り起こしプッシュ通知</h2>
+        <p class="muted" style="font-size: 0.85em;">過去に複数回来店しているが、最近来ていないお客様を自動抽出し、メッセージを一斉送信します。</p>
+        
+        <div class="input-row">
+          <div class="input-group">
+            <label>来店回数の条件</label>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <input type="number" id="dormantVisitMin" value="3" style="width: 70px;"> 回以上
+            </div>
+          </div>
+          <div class="input-group">
+            <label>離脱日数の条件</label>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <input type="number" id="dormantDaysMin" value="60" style="width: 70px;"> 日以上
+            </div>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>通知メッセージ本文</label>
+          <textarea id="dormantMessage" rows="4" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:1em;" placeholder="お久しぶりです！今週末使える特別クーポンをプレゼント！..."></textarea>
+        </div>
+
+        <button id="sendPushBtn" class="btn-warn press" style="border-color: #10B981; color: #10B981;">対象者を抽出して送信テストへ</button>
+      </div>
+    </section>
+
+  </main>
+  
+  <div id="banner" class="banner" style="display:none; z-index:99999;"></div>
+
+  <div id="modal" class="modal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-hd">
+        <strong id="modalTitle" class="help-title">タイトル</strong>
+        <button id="modalClose" class="modal-close" aria-label="閉じる">×</button>
+      </div>
+      <div id="modalBody" class="help-body"></div>
+      <div id="modalFooter" class="modal-ft"></div>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay" style="display:none; z-index:99999;">
+    <div class="overlay-card">
+      <div id="overlayText" class="overlay-text">読み込み中</div>
+    </div>
+  </div>
+
+  <script src="./app-setting.js"></script>
+
+</body>
+</html>
