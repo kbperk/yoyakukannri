@@ -1,5 +1,5 @@
 /* =========================================================
- * admin.js (GitHub Pages 用) — 管理画面UI 完全動作・ポイント対応版
+ * admin.js (GitHub Pages 用) — 管理画面UI 完全動作・ポイント対応・個別クーポン対応版
  * ========================================================= */
 
 const API_EXEC_URL = 'https://script.google.com/macros/s/AKfycbwkkj4vp6v9gfjLZIxsLN-1aaUjyQebngxfTuMDPz62x_xg4dCadey920wmL3IYtS82kA/exec';
@@ -10,7 +10,7 @@ const CLOSE_HOUR = 20;
 let _currentDateStr = '';
 let _lastData = null;
 
-// ★ 新規: アプリ設定のキャッシュ用
+// アプリ設定のキャッシュ用
 let _appSettingsCache = {};
 
 // ----------------- POST通信（Google複数アカウント問題 回避版） -----------------
@@ -494,7 +494,7 @@ function renderRemain_(slots){
   qs('admTimes').innerHTML = html;
 }
 
-// ★ 新規追加機能：2軸ポイント表示と割引メニューの排他制御を組み込んだ受付モーダル
+// ★ SCAN 2：クーポン込みの受付モーダル構築
 function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr) {
   const memberName = qrData.member ? qrData.member.name : '不明なユーザー';
   const targetRes = qrData.reservation;
@@ -514,7 +514,9 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   }
   const baseUnit = isCamp ? (todayUnitPrice + cDisc) : todayUnitPrice;
 
-  // 割引オプション（ラジオボタン）HTMLの構築
+  // クーポン情報保持用変数
+  let scannedCoupon = null; // { name, amount }
+
   let optionsHtml = '';
   if (isCamp) {
     optionsHtml += `
@@ -573,6 +575,9 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
         <div id="discountOptionsArea" style="background:#f9f9f9; padding:10px; border-radius:8px;">
           ${optionsHtml}
         </div>
+        <div style="margin-top: 15px;">
+           <button id="scanCouponBtn" class="btn-outline press" style="width:100%; border-color:#E60012; color:#E60012; font-weight:bold;">📷 個別クーポンを読み込む</button>
+        </div>
       </div>
 
       <div style="display:flex; align-items:center; justify-content:space-between; background:#f4f4f4; padding:10px; border-radius:8px; margin-bottom:15px;">
@@ -595,7 +600,7 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
 
   const headInput = document.getElementById('qrHeadCount');
   const amountSpan = document.getElementById('qrFinalAmount');
-  const radios = document.querySelectorAll('input[name="discount_type"]');
+  let radios = document.querySelectorAll('input[name="discount_type"]');
 
   const updateCalc = () => {
     const head = parseInt(headInput.value) || 1;
@@ -608,7 +613,9 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
        } else if (selected.startsWith('point_')) {
          const idx = selected.split('_')[1];
          const disc = Number(_appSettingsCache[`ex_discount_${idx}`] || 0);
-         total -= disc; // ポイント割引は1会計1回
+         total -= disc; 
+       } else if (selected === 'scanned_coupon' && scannedCoupon) {
+         total -= scannedCoupon.amount;
        }
     }
     total = Math.max(0, total);
@@ -619,19 +626,69 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
   radios.forEach(rd => rd.addEventListener('change', updateCalc));
   updateCalc(); 
 
+  // ★ 2段階スキャン（クーポン読み込みボタン押下時）
+  document.getElementById('scanCouponBtn').onclick = () => {
+    if(window.openQrScanner) {
+      window.openQrScanner(async (decodedText) => {
+        if (!decodedText.startsWith('CPN:')) {
+          alert('これはクーポンQRではありません。');
+          return;
+        }
+        const parts = decodedText.split(':');
+        const cAmt = Number(parts[1]);
+        const cMemberId = parts[2];
+        const cName = parts[3];
+
+        if (cMemberId !== scannedMemberId) {
+          alert('別の方のクーポンです。使用できません。');
+          return;
+        }
+
+        showOverlay('クーポン確認中...');
+        try {
+          const checkRes = await api_('adminUpdateStatus', {
+            data: { update_type: 'coupon_check', member_id: scannedMemberId, coupon_amount: cAmt, coupon_name: cName }
+          });
+          hideOverlay();
+          
+          scannedCoupon = { amount: cAmt, name: cName };
+          
+          const area = document.getElementById('discountOptionsArea');
+          const htmlAdd = `
+            <label style="display:flex; align-items:center; gap:8px; padding:10px; background:#fff; border:2px solid #E60012; border-radius:8px; margin-bottom:8px; cursor:pointer;">
+              <input type="radio" name="discount_type" value="scanned_coupon" checked style="transform:scale(1.2);">
+              <span style="font-weight:bold; color:#E60012;">🎫 個別クーポン適用 (-${cAmt}円)</span>
+            </label>
+          `;
+          area.insertAdjacentHTML('beforeend', htmlAdd);
+          
+          const newRadio = area.querySelector('input[value="scanned_coupon"]');
+          newRadio.addEventListener('change', updateCalc);
+          updateCalc();
+          
+        } catch (e) {
+          hideOverlay();
+          alert(e.message || 'クーポンの確認に失敗しました');
+        }
+      });
+    }
+  };
+
   document.getElementById('qrCancelBtn').onclick = () => closeModal();
   
+  // ★ IN確定（消費処理）
   document.getElementById('qrCommitBtn').onclick = async () => {
     const head = parseInt(headInput.value) || 1;
-    if (head < 1) {
-      alert('人数は1名以上にしてください');
-      return;
-    }
+    if (head < 1) { alert('人数は1名以上にしてください'); return; }
     
     let total = head * baseUnit;
     let consumePt = 0;
     let noteText = '';
-    const selected = document.querySelector('input[name="discount_type"]:checked').value;
+    let useCouponAmount = 0;
+    let useCouponName = '';
+    
+    const selectedRadio = document.querySelector('input[name="discount_type"]:checked');
+    const selected = selectedRadio ? selectedRadio.value : 'none';
 
     if (selected === 'campaign' && isCamp) {
       total -= (cDisc * head);
@@ -644,6 +701,11 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
       total -= disc;
       consumePt = reqPt;
       noteText = `ポイント利用: ${text} (-${disc}円)`;
+    } else if (selected === 'scanned_coupon' && scannedCoupon) {
+      total -= scannedCoupon.amount;
+      noteText = `個別クーポン: ${scannedCoupon.name} (-${scannedCoupon.amount}円)`;
+      useCouponAmount = scannedCoupon.amount;
+      useCouponName = scannedCoupon.name;
     }
     total = Math.max(0, total);
 
@@ -658,16 +720,16 @@ function buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr)
           head_count: head,
           final_amount: total,
           consumed_point: consumePt,
-          discount_note: noteText
+          discount_note: noteText,
+          use_coupon_amount: useCouponAmount, 
+          use_coupon_name: useCouponName
         }
       });
       hideOverlay();
       closeModal();
       
       let msg = `${escapeHtml_(res2.member_name)} 様の受付が完了しました！<br>（累計来店: <strong style="color:#2563EB;">${res2.new_count}回</strong>）`;
-      if (consumePt > 0) {
-          msg += `<br><br>※ポイントを <strong style="color:#E60012;">${consumePt}pt</strong> 消費しました。<br>`;
-      }
+      if (consumePt > 0) msg += `<br><br>※ポイントを <strong style="color:#E60012;">${consumePt}pt</strong> 消費しました。<br>`;
       msg += `<br>確定料金: <strong style="color:#E60012; font-size:1.3em;">${total.toLocaleString()}円</strong>`;
 
       openModal(
@@ -1078,6 +1140,7 @@ function attachPricingUI_(){
   document.body.appendChild(btn); 
 }
 
+// ★ QRスキャナーのグローバル化（SCAN1 / SCAN2 共用）
 function attachQRScannerUI_(){
   const script = document.createElement('script');
   script.src = 'https://unpkg.com/html5-qrcode';
@@ -1134,7 +1197,8 @@ function attachQRScannerUI_(){
 
     let html5QrCode = null;
 
-    btn.addEventListener('click', () => {
+    // グローバル関数として登録
+    window.openQrScanner = function(onSuccess) {
       overlay.style.display = 'flex';
       
       if (!html5QrCode) {
@@ -1144,36 +1208,51 @@ function attachQRScannerUI_(){
       const config = { fps: 10, qrbox: { width: 250, height: 250 } };
       
       html5QrCode.start({ facingMode: "environment" }, config, async (decodedText) => {
-        html5QrCode.stop().then(async () => {
-          overlay.style.display = 'none';
-
-          const parts = decodedText.split(',');
-          const scannedMemberId = parts[0].trim();
-          const scannedResId = parts.length > 1 ? parts[1].trim() : null;
-          const todayStr = _currentDateStr || (new Date().toISOString().slice(0,10));
-
-          try {
-            showOverlay('データ照会中...');
-            const qrData = await api_('adminUpdateStatus', {
-              data: {
-                update_type: 'qr_check',
-                member_id: scannedMemberId,
-                reservation_id: scannedResId,
-                date: todayStr
-              }
-            });
-            hideOverlay();
-            const finalResId = qrData.reservation ? qrData.reservation.id : null;
-            buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr);
-          } catch(err) {
-            hideOverlay();
-            openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(err.message || String(err))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
-          }
-
-        });
+        if (html5QrCode.isScanning) {
+            await html5QrCode.stop().catch(()=>{});
+        }
+        overlay.style.display = 'none';
+        if(onSuccess) onSuccess(decodedText);
       }, (err) => {}).catch(err => {
         openModal('カメラエラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold;">カメラの起動に失敗しました。<br>スマホの設定でカメラへのアクセスを許可してください。</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1;" onclick="closeModal()">閉じる</button></div>`);
         overlay.style.display = 'none';
+      });
+    };
+
+    // ★ SCAN 1: 最初の読み込み（予約/会員QR）
+    btn.addEventListener('click', () => {
+      window.openQrScanner(async (decodedText) => {
+        let scannedMemberId = '';
+        let scannedResId = null;
+
+        // 誤読防止ブロック
+        if (decodedText.startsWith('CPN:')) {
+           openModal('⚠️ エラー', '<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6;">これはクーポンQRです。<br>先に会員証または予約QRを読み込んでください。</div>', '<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>');
+           return;
+        } else if (decodedText.startsWith('RES:')) {
+           const parts = decodedText.split(':');
+           scannedResId = parts[1];
+           scannedMemberId = parts[2];
+        } else {
+           const parts = decodedText.split(',');
+           scannedMemberId = parts[0].trim();
+           scannedResId = parts.length > 1 ? parts[1].trim() : null;
+        }
+
+        const todayStr = _currentDateStr || (new Date().toISOString().slice(0,10));
+
+        try {
+          showOverlay('データ照会中...');
+          const qrData = await api_('adminUpdateStatus', {
+            data: { update_type: 'qr_check', member_id: scannedMemberId, reservation_id: scannedResId, date: todayStr }
+          });
+          hideOverlay();
+          const finalResId = qrData.reservation ? qrData.reservation.id : null;
+          buildAndShowCheckInModal(qrData, scannedMemberId, finalResId, todayStr);
+        } catch(err) {
+          hideOverlay();
+          openModal('⚠️ エラー', `<div style="text-align:center; padding:20px; color:#E60012; font-weight:bold; font-size:1.1em; line-height:1.6; white-space:pre-wrap;">${escapeHtml_(err.message || String(err))}</div>`, `<div style="width:100%; display:flex;"><button class="btn press" style="flex:1; background:#6B7280; color:#fff; border:none;" onclick="closeModal()">閉じる</button></div>`);
+        }
       });
     });
     

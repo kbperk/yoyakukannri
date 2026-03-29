@@ -183,7 +183,7 @@ qs('saveSettingsBtn').addEventListener('click', async () => {
   }
 });
 
-// 休眠顧客の抽出とプッシュ送信ボタン (※UI側モックアップ、GAS実装で本格稼働)
+// 休眠顧客の抽出とプッシュ送信ボタン
 qs('sendPushBtn').addEventListener('click', async () => {
   const minVisits = qs('dormantVisitMin').value;
   const minDays = qs('dormantDaysMin').value;
@@ -196,7 +196,6 @@ qs('sendPushBtn').addEventListener('click', async () => {
 
   showOverlay('対象者を抽出中...');
   try {
-    // GAS側で対象人数を計算するAPIをコール
     const res = await apiCall_('admin_dormant_check', { min_visits: minVisits, min_days: minDays });
     hideOverlay();
 
@@ -207,7 +206,7 @@ qs('sendPushBtn').addEventListener('click', async () => {
 
     openModal('送信確認', `
       <div style="font-weight:bold; font-size:1.1em; color:#E60012;">抽出完了： ${res.target_count} 名が対象です</div>
-      <p style="margin-top:10px; font-size:0.9em; color:#666;">以下のメッセージを一斉送信（メール/LINE）します。よろしいですか？</p>
+      <p style="margin-top:10px; font-size:0.9em; color:#666;">以下のメッセージを一斉送信（プッシュ通知）します。よろしいですか？</p>
       <div style="background:#f2f4f6; padding:10px; border-radius:8px; margin-top:10px; font-size:0.9em; white-space:pre-wrap;">${msg}</div>
     `, `
       <div style="display:flex; gap:10px;">
